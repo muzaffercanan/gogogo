@@ -4,9 +4,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -31,21 +34,75 @@ func New(store *repository.Store, maxAttempts int, now func() time.Time) (*Servi
 	return &Service{store: store, maxAttempts: maxAttempts, now: now}, nil
 }
 
+// maxIdempotencyKeyLen is the longest Idempotency-Key the API accepts, in characters.
+const maxIdempotencyKeyLen = 255
+
 // Create validates req and stores it as a pending notification, ready for dispatch. The notification
 // carries the correlation ID of ctx. It returns a *domain.ValidationError if req is invalid.
-func (s *Service) Create(ctx context.Context, req domain.NotificationRequest) (domain.Notification, error) {
+//
+// key is the request's Idempotency-Key, or nil if it sent none. If a notification was already created
+// with key, Create stores nothing: it returns that notification in its current state with replayed set
+// if req asks for the same notification (see domain.NotificationRequest.Hash), and
+// domain.ErrIdempotencyKeyReused otherwise. The lookup comes before validation, so a replay succeeds
+// even when the original request would no longer be valid, for example because its scheduled_at has
+// passed. Concurrent requests with the same key create one notification; the others replay it.
+func (s *Service) Create(ctx context.Context, req domain.NotificationRequest, key *string) (n domain.Notification, replayed bool, err error) {
+	var hash []byte
+	if key != nil {
+		if err := validateIdempotencyKey(*key); err != nil {
+			return domain.Notification{}, false, err
+		}
+		hash = req.Hash()
+		existing, err := s.store.GetNotificationByIdempotencyKey(ctx, *key)
+		switch {
+		case err == nil:
+			return replay(existing, hash)
+		case !errors.Is(err, domain.ErrNotFound):
+			return domain.Notification{}, false, err
+		}
+	}
+
 	if err := req.Validate(s.now()); err != nil {
-		return domain.Notification{}, err
+		return domain.Notification{}, false, err
 	}
-	n, err := s.newNotification(ctx, req)
+	nn, err := s.newNotification(ctx, req)
 	if err != nil {
-		return domain.Notification{}, err
+		return domain.Notification{}, false, err
 	}
-	stored, _, err := s.store.CreateNotification(ctx, n)
+	if key != nil {
+		nn.IdempotencyKey, nn.RequestHash = *key, hash
+	}
+	stored, created, err := s.store.CreateNotification(ctx, nn)
 	if err != nil {
-		return domain.Notification{}, fmt.Errorf("storing notification: %w", err)
+		return domain.Notification{}, false, fmt.Errorf("storing notification: %w", err)
 	}
-	return stored, nil
+	if !created {
+		// A concurrent request with the same key committed between the lookup and the insert.
+		return replay(stored, hash)
+	}
+	return stored, false, nil
+}
+
+// replay answers a request whose idempotency key already created existing.
+func replay(existing domain.Notification, hash []byte) (domain.Notification, bool, error) {
+	if !bytes.Equal(existing.RequestHash, hash) {
+		return domain.Notification{}, false, fmt.Errorf("notification %s: %w", existing.ID, domain.ErrIdempotencyKeyReused)
+	}
+	return existing, true, nil
+}
+
+func validateIdempotencyKey(key string) error {
+	var code domain.FieldErrorCode
+	var msg string
+	switch n := utf8.RuneCountInString(key); {
+	case n == 0:
+		code, msg = domain.CodeTooShort, "must not be empty"
+	case n > maxIdempotencyKeyLen:
+		code, msg = domain.CodeTooLong, fmt.Sprintf("must be at most %d characters", maxIdempotencyKeyLen)
+	default:
+		return nil
+	}
+	return &domain.ValidationError{Fields: []domain.FieldError{{Field: "Idempotency-Key", Code: code, Message: msg}}}
 }
 
 // newNotification turns a valid request into a notification to store, with a new time-ordered ID.

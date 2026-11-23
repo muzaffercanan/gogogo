@@ -117,3 +117,6 @@ func fieldErrors(body map[string]any) []string {
 	}
 	return out
 }
+
+// setNow fixes the service's clock at now.
+func (a *testAPI) setNow(now time.Time) { a.now.Store(&now) }

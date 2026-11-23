@@ -66,11 +66,10 @@ func bodyLimit(r *http.Request) int64 {
 
 // CreateNotification implements POST /v1/notifications.
 func (s *Server) CreateNotification(ctx context.Context, req oapi.CreateNotificationRequestObject) (oapi.CreateNotificationResponseObject, error) {
-	n, err := s.svc.Create(ctx, toRequest(*req.Body))
+	n, replayed, err := s.svc.Create(ctx, toRequest(*req.Body), req.Params.IdempotencyKey)
 	if err != nil {
 		return nil, err
 	}
-	replayed := false
 	return oapi.CreateNotification202JSONResponse{
 		Body:    toNotification(n),
 		Headers: oapi.CreateNotification202ResponseHeaders{Location: ptr(notificationPath(n)), IdempotentReplayed: &replayed},

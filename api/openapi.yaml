@@ -14,7 +14,9 @@ info:
     duplicate that a crash between "provider accepted" and "status recorded" can cause.
 
     **Idempotency.** Create endpoints accept an `Idempotency-Key` header. Repeating a request with the
-    same key and the same body returns the original result with `Idempotent-Replayed: true`; reusing a
+    same key and the same body returns what the first request created (the notification in its current
+    state, or the original batch result) with `Idempotent-Replayed: true`, even if the request would no
+    longer pass validation, for example because its `scheduled_at` has passed; reusing a
     key with a different body is rejected with `422`. Keys are global and do not expire. Bodies are
     compared by meaning: the order of fields, whitespace and unknown fields do not matter, an omitted
     `priority` equals `normal`, and `scheduled_at` values that denote the same instant are equal.

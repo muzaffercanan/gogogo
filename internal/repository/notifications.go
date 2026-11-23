@@ -110,6 +110,19 @@ func (s *Store) CreateNotification(ctx context.Context, n domain.NewNotification
 	return stored, created, nil
 }
 
+// GetNotificationByIdempotencyKey returns the notification created with key. It returns an error
+// wrapping domain.ErrNotFound if there is none.
+func (s *Store) GetNotificationByIdempotencyKey(ctx context.Context, key string) (domain.Notification, error) {
+	row, err := sqlc.New(s.pool).GetNotificationByIdempotencyKey(ctx, key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Notification{}, fmt.Errorf("notification with idempotency key %q: %w", key, domain.ErrNotFound)
+	}
+	if err != nil {
+		return domain.Notification{}, fmt.Errorf("reading notification by idempotency key: %w", err)
+	}
+	return toDomain(row), nil
+}
+
 // Transition is a guarded status change of one notification.
 type Transition struct {
 	ID uuid.UUID
