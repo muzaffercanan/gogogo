@@ -28,6 +28,9 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 - All text files are LF (`.gitattributes`). Shell scripts must be POSIX `sh`.
 - The race detector needs cgo, so run race tests in Docker/CI rather than natively on Windows.
 - Makefile recipes use POSIX `sh` syntax; on Windows, run `make` from Git Bash.
+- Integration tests need Docker. Prefer `make test-integration`: it sets the Testcontainers socket
+  override that Docker Desktop needs. Running `go test -tags integration` by hand from Git Bash needs
+  `MSYS_NO_PATHCONV=1 TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`.
 
 ## Commands
 
@@ -36,6 +39,7 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 | Start everything (Postgres, RabbitMQ, Redis, migrations, api, relay, worker, mock provider) | `docker compose up --build -d` or `make up` |
 | Stop / wipe data | `make down` / `docker compose down -v` |
 | Unit tests | `make test` (`go test -count=1 ./...`) |
+| Integration tests (throwaway containers, needs Docker) | `make test-integration` (`go test -tags integration ./...`) |
 | Race tests (Linux container) | `make test-race` |
 | Lint | `make lint` (`golangci-lint run ./...`, config in `.golangci.yml`) |
 | Build binaries | `make build` → `./bin` |
@@ -53,6 +57,7 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
   `internal/repository/sqlc` from them and the migrations.
 - `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.
 - `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
+- `internal/testutil/pgtest`: PostgreSQL container for integration tests; one migrated database per test.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
 - `docs/adr/`: architecture decision records.
 
@@ -63,5 +68,7 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - Wrap errors with context (`fmt.Errorf("doing x: %w", err)`); no panics outside `main`.
 - No mutable package-level state; dependencies are passed in explicitly.
 - Table-driven tests; every bug fix comes with a test that reproduces it.
+- Code that talks to PostgreSQL, RabbitMQ or Redis is tested against real containers, not mocks. Those
+  test files start with `//go:build integration`; database tests use `pgtest.Server.NewDatabase(t)`.
 - Never edit `*.gen.go` by hand: change the source (spec, SQL) and run `make generate`. Generated code is
   committed; CI fails if it is stale.

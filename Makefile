@@ -2,6 +2,9 @@
 SHELL := /bin/sh
 # Stop Git Bash from rewriting container paths such as /src.
 export MSYS_NO_PATHCONV := 1
+# Testcontainers' cleanup container (Ryuk) mounts the Docker socket. Docker Desktop exposes it to
+# containers at this path whatever the host OS; on Linux it is the default anyway.
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE ?= /var/run/docker.sock
 
 GO_IMAGE   ?= golang:1.27
 SQLC_IMAGE ?= sqlc/sqlc:1.31.1
@@ -11,7 +14,7 @@ COMPOSE    ?= docker compose
 
 .PHONY: help
 help: ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
 .PHONY: up
 up: ## Build and start the whole stack in the background
@@ -32,6 +35,10 @@ build: ## Build all binaries into ./bin
 .PHONY: test
 test: ## Run unit tests
 	go test -count=1 ./...
+
+.PHONY: test-integration
+test-integration: ## Run integration tests against throwaway containers (needs Docker)
+	go test -tags integration -count=1 ./...
 
 .PHONY: test-race
 test-race: ## Run unit tests with the race detector inside a Linux container
