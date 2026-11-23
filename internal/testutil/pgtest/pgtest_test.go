@@ -34,8 +34,8 @@ func TestDatabasesAreIsolated(t *testing.T) {
 	first := pg.NewDatabase(t)
 	second := pg.NewDatabase(t)
 
-	_, err := first.Exec(ctx, `INSERT INTO batches (id, total_count, accepted_count, rejected_count)
-		VALUES ('0193a5b0-7c2e-7d41-9a3b-5f2e8c1d4a60', 1, 1, 0)`)
+	_, err := first.Exec(ctx, `INSERT INTO batches (id, total_count, accepted_count, rejected_count, item_results)
+		VALUES ('0193a5b0-7c2e-7d41-9a3b-5f2e8c1d4a60', 1, 1, 0, '[]')`)
 	if err != nil {
 		t.Fatalf("inserting into the first database: %v", err)
 	}

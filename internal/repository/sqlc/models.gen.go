@@ -18,6 +18,7 @@ type Batch struct {
 	AcceptedCount  int32
 	RejectedCount  int32
 	CreatedAt      time.Time
+	ItemResults    []byte
 }
 
 type Notification struct {

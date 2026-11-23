@@ -126,3 +126,83 @@ func (s *Service) newNotification(ctx context.Context, req domain.NotificationRe
 		ScheduledAt:   req.ScheduledAt,
 	}, nil
 }
+
+// CreateBatch validates each of items on its own and stores the valid ones as pending notifications of
+// one batch, in one transaction. Invalid items are rejected with their field errors; the batch is
+// stored even if every item is rejected. It returns a *domain.ValidationError if items is empty or holds
+// more than domain.MaxBatchItems.
+//
+// key works as for Create and covers the whole batch: a replay returns the stored batch, whose item
+// results are those of the first request.
+func (s *Service) CreateBatch(ctx context.Context, items []domain.NotificationRequest, key *string) (b domain.Batch, replayed bool, err error) {
+	switch {
+	case len(items) == 0:
+		return domain.Batch{}, false, fieldError("notifications", domain.CodeTooShort, "must hold at least 1 notification")
+	case len(items) > domain.MaxBatchItems:
+		return domain.Batch{}, false, fieldError("notifications", domain.CodeTooManyItems,
+			fmt.Sprintf("must hold at most %d notifications", domain.MaxBatchItems))
+	}
+
+	var hash []byte
+	if key != nil {
+		if err := validateIdempotencyKey(*key); err != nil {
+			return domain.Batch{}, false, err
+		}
+		hash = domain.BatchHash(items)
+		existing, err := s.store.GetBatchByIdempotencyKey(ctx, *key)
+		switch {
+		case err == nil:
+			return replayBatch(existing, hash)
+		case !errors.Is(err, domain.ErrNotFound):
+			return domain.Batch{}, false, err
+		}
+	}
+
+	id, err := uuid.NewV7()
+	if err != nil {
+		return domain.Batch{}, false, fmt.Errorf("generating batch ID: %w", err)
+	}
+	nb := domain.NewBatch{ID: id, Items: make([]domain.BatchItemResult, len(items))}
+	if key != nil {
+		nb.IdempotencyKey, nb.RequestHash = *key, hash
+	}
+	now := s.now()
+	for i, item := range items {
+		nb.Items[i].Index = i
+		if err := item.Validate(now); err != nil {
+			var invalid *domain.ValidationError
+			if !errors.As(err, &invalid) {
+				return domain.Batch{}, false, err
+			}
+			nb.Items[i].Errors = invalid.Fields
+			continue
+		}
+		n, err := s.newNotification(ctx, item)
+		if err != nil {
+			return domain.Batch{}, false, err
+		}
+		n.BatchID = &id
+		nb.Items[i].NotificationID = &n.ID
+		nb.Notifications = append(nb.Notifications, n)
+	}
+
+	stored, created, err := s.store.CreateBatch(ctx, nb)
+	if err != nil {
+		return domain.Batch{}, false, fmt.Errorf("storing batch: %w", err)
+	}
+	if !created {
+		return replayBatch(stored, hash)
+	}
+	return stored, false, nil
+}
+
+func replayBatch(existing domain.Batch, hash []byte) (domain.Batch, bool, error) {
+	if !bytes.Equal(existing.RequestHash, hash) {
+		return domain.Batch{}, false, fmt.Errorf("batch %s: %w", existing.ID, domain.ErrIdempotencyKeyReused)
+	}
+	return existing, true, nil
+}
+
+func fieldError(field string, code domain.FieldErrorCode, message string) error {
+	return &domain.ValidationError{Fields: []domain.FieldError{{Field: field, Code: code, Message: message}}}
+}

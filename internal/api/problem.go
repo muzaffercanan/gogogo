@@ -130,11 +130,16 @@ func ResponseErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.R
 	}
 }
 
-func validationProblem(fields []domain.FieldError) oapi.Problem {
+func toFieldErrors(fields []domain.FieldError) []oapi.FieldError {
 	errs := make([]oapi.FieldError, len(fields))
 	for i, f := range fields {
 		errs[i] = oapi.FieldError{Field: f.Field, Code: oapi.FieldErrorCode(f.Code), Message: f.Message}
 	}
+	return errs
+}
+
+func validationProblem(fields []domain.FieldError) oapi.Problem {
+	errs := toFieldErrors(fields)
 	noun := "fields"
 	if len(fields) == 1 {
 		noun = "field"

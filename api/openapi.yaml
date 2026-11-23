@@ -469,7 +469,9 @@ components:
             detail: the notification is already sent
 
     PayloadTooLarge:
-      description: The request body exceeds the size limit.
+      description: |
+        The request body exceeds the size limit: 1 MiB, or 10 MiB for a batch. Split a larger batch
+        (for example one of many long emails) into several requests.
       content:
         application/problem+json:
           schema:

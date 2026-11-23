@@ -77,8 +77,31 @@ func (s *Server) CreateNotification(ctx context.Context, req oapi.CreateNotifica
 }
 
 // CreateNotificationBatch implements POST /v1/notifications/batch.
-func (s *Server) CreateNotificationBatch(context.Context, oapi.CreateNotificationBatchRequestObject) (oapi.CreateNotificationBatchResponseObject, error) {
-	return nil, errNotImplemented
+func (s *Server) CreateNotificationBatch(ctx context.Context, req oapi.CreateNotificationBatchRequestObject) (oapi.CreateNotificationBatchResponseObject, error) {
+	items := make([]domain.NotificationRequest, len(req.Body.Notifications))
+	for i, n := range req.Body.Notifications {
+		items[i] = toRequest(n)
+	}
+	b, replayed, err := s.svc.CreateBatch(ctx, items, req.Params.IdempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	return oapi.CreateNotificationBatch202JSONResponse{
+		Body:    toBatchResult(b),
+		Headers: oapi.CreateNotificationBatch202ResponseHeaders{Location: ptr("/v1/batches/" + b.ID.String()), IdempotentReplayed: &replayed},
+	}, nil
+}
+
+func toBatchResult(b domain.Batch) oapi.BatchCreateResult {
+	items := make([]oapi.BatchItemResult, len(b.Items))
+	for i, it := range b.Items {
+		items[i] = oapi.BatchItemResult{Index: it.Index, Result: oapi.Accepted, NotificationId: it.NotificationID}
+		if it.NotificationID == nil {
+			errs := toFieldErrors(it.Errors)
+			items[i].Result, items[i].Errors = oapi.Rejected, &errs
+		}
+	}
+	return oapi.BatchCreateResult{BatchId: b.ID, Total: b.Total, Accepted: b.Accepted, Rejected: b.Rejected, Items: items}
 }
 
 // GetNotification implements GET /v1/notifications/{id}.
