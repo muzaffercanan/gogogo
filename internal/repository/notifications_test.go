@@ -47,13 +47,18 @@ func TestCreateNotificationWritesNotificationOutboxRowAndEvent(t *testing.T) {
 		t.Errorf("stored notification = %+v, does not match input %+v", got, n)
 	}
 
+	// The outbox row must be available from the moment the notification was created. Both timestamps
+	// come from now() in the creating transaction, so they are equal whatever the database clock does
+	// afterwards; comparing with now() in a later statement would fail if the clock stepped back.
 	var (
-		payload  []byte
-		availNow bool
+		payload         []byte
+		availAtCreation bool
 	)
 	err = db.QueryRow(ctx,
-		`SELECT payload, available_at <= now() FROM outbox WHERE notification_id = $1`, n.ID,
-	).Scan(&payload, &availNow)
+		`SELECT o.payload, o.available_at = n.created_at
+		FROM outbox AS o JOIN notifications AS n ON n.id = o.notification_id
+		WHERE o.notification_id = $1`, n.ID,
+	).Scan(&payload, &availAtCreation)
 	if err != nil {
 		t.Fatalf("reading outbox row: %v", err)
 	}
@@ -66,8 +71,8 @@ func TestCreateNotificationWritesNotificationOutboxRowAndEvent(t *testing.T) {
 		p["correlation_id"] != want["correlation_id"] {
 		t.Errorf("outbox payload = %v, want %v", p, want)
 	}
-	if !availNow {
-		t.Error("outbox row of an unscheduled notification is not available yet")
+	if !availAtCreation {
+		t.Error("outbox row of an unscheduled notification is not available from its creation time")
 	}
 
 	var (
