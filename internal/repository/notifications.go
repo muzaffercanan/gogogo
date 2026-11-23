@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -107,6 +108,87 @@ func (s *Store) CreateNotification(ctx context.Context, n domain.NewNotification
 		return domain.Notification{}, false, fmt.Errorf("creating notification: %w", err)
 	}
 	return stored, created, nil
+}
+
+// Transition is a guarded status change of one notification.
+type Transition struct {
+	ID uuid.UUID
+	// From lists the statuses the change is allowed from.
+	From []domain.Status
+	To   domain.Status
+	// Reason is recorded on the status event. Optional.
+	Reason string
+	// LastError replaces the notification's last error when non-empty.
+	LastError string
+	// ProviderMessageID is stored when non-empty.
+	ProviderMessageID string
+}
+
+// TransitionNotification applies t if the notification is currently in one of t.From, and records the
+// status event in the same statement. Entering sending counts an attempt and starts the delivery lease,
+// entering sent stamps sent_at, and leaving sending ends the lease.
+//
+// It returns an error wrapping domain.ErrNotFound if the notification does not exist, and a
+// *domain.StatusConflictError if it is in another status, for example because a concurrent transition
+// won. In both cases nothing is written.
+func (s *Store) TransitionNotification(ctx context.Context, t Transition) (domain.Notification, error) {
+	return transition(ctx, sqlc.New(s.pool), t)
+}
+
+// transition implements TransitionNotification on q, so that operations that write more than the status
+// (a retry also inserts an outbox row) can run it inside their own transaction.
+func transition(ctx context.Context, q *sqlc.Queries, t Transition) (domain.Notification, error) {
+	if len(t.From) == 0 {
+		return domain.Notification{}, errors.New("transition without allowed source statuses")
+	}
+	from := make([]string, len(t.From))
+	for i, st := range t.From {
+		from[i] = string(st)
+	}
+
+	row, err := q.TransitionNotification(ctx, sqlc.TransitionNotificationParams{
+		ID:                t.ID,
+		FromStatuses:      from,
+		ToStatus:          string(t.To),
+		LastError:         nilIfEmpty(t.LastError),
+		ProviderMessageID: nilIfEmpty(t.ProviderMessageID),
+		Reason:            nilIfEmpty(t.Reason),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		current, getErr := q.GetNotification(ctx, t.ID)
+		if errors.Is(getErr, pgx.ErrNoRows) {
+			return domain.Notification{}, fmt.Errorf("notification %s: %w", t.ID, domain.ErrNotFound)
+		}
+		if getErr != nil {
+			return domain.Notification{}, fmt.Errorf("reading notification %s after a refused transition: %w", t.ID, getErr)
+		}
+		return domain.Notification{}, &domain.StatusConflictError{ID: t.ID, Current: domain.Status(current.Status), Wanted: t.To}
+	}
+	if err != nil {
+		return domain.Notification{}, fmt.Errorf("moving notification %s to %s: %w", t.ID, t.To, err)
+	}
+
+	return toDomain(sqlc.Notification{
+		ID:                row.ID,
+		BatchID:           row.BatchID,
+		IdempotencyKey:    row.IdempotencyKey,
+		RequestHash:       row.RequestHash,
+		Channel:           row.Channel,
+		Priority:          row.Priority,
+		Recipient:         row.Recipient,
+		Content:           row.Content,
+		Status:            row.Status,
+		Attempts:          row.Attempts,
+		MaxAttempts:       row.MaxAttempts,
+		LastError:         row.LastError,
+		ProviderMessageID: row.ProviderMessageID,
+		CorrelationID:     row.CorrelationID,
+		ScheduledAt:       row.ScheduledAt,
+		SendingStartedAt:  row.SendingStartedAt,
+		CreatedAt:         row.CreatedAt,
+		UpdatedAt:         row.UpdatedAt,
+		SentAt:            row.SentAt,
+	}), nil
 }
 
 func toDomain(r sqlc.Notification) domain.Notification {

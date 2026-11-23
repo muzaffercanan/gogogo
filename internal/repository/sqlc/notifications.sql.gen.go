@@ -142,3 +142,107 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 	)
 	return i, err
 }
+
+const transitionNotification = `-- name: TransitionNotification :one
+WITH locked AS (
+    SELECT cur.id, cur.status
+    FROM notifications AS cur
+    WHERE cur.id = $1 AND cur.status = ANY($2::text[])
+    FOR UPDATE
+), updated AS (
+    UPDATE notifications AS n
+    SET status              = $3::text,
+        updated_at          = now(),
+        attempts            = n.attempts + CASE WHEN $3::text = 'sending' THEN 1 ELSE 0 END,
+        sending_started_at  = CASE WHEN $3::text = 'sending' THEN now() END,
+        sent_at             = CASE WHEN $3::text = 'sent' THEN now() ELSE n.sent_at END,
+        last_error          = COALESCE($4::text, n.last_error),
+        provider_message_id = COALESCE($5::text, n.provider_message_id)
+    FROM locked
+    WHERE n.id = locked.id
+    RETURNING n.id, n.batch_id, n.idempotency_key, n.request_hash, n.channel, n.priority, n.recipient,
+              n.content, n.status, n.attempts, n.max_attempts, n.last_error, n.provider_message_id,
+              n.correlation_id, n.scheduled_at, n.sending_started_at, n.created_at, n.updated_at,
+              n.sent_at, locked.status AS from_status
+), event AS (
+    INSERT INTO notification_events (notification_id, from_status, to_status, reason)
+    SELECT updated.id, updated.from_status, updated.status, $6::text
+    FROM updated
+)
+SELECT id, batch_id, idempotency_key, request_hash, channel, priority, recipient, content, status,
+       attempts, max_attempts, last_error, provider_message_id, correlation_id, scheduled_at,
+       sending_started_at, created_at, updated_at, sent_at, from_status
+FROM updated
+`
+
+type TransitionNotificationParams struct {
+	ID                uuid.UUID
+	FromStatuses      []string
+	ToStatus          string
+	LastError         *string
+	ProviderMessageID *string
+	Reason            *string
+}
+
+type TransitionNotificationRow struct {
+	ID                uuid.UUID
+	BatchID           *uuid.UUID
+	IdempotencyKey    *string
+	RequestHash       []byte
+	Channel           string
+	Priority          string
+	Recipient         string
+	Content           string
+	Status            string
+	Attempts          int32
+	MaxAttempts       int32
+	LastError         *string
+	ProviderMessageID *string
+	CorrelationID     *string
+	ScheduledAt       *time.Time
+	SendingStartedAt  *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	SentAt            *time.Time
+	FromStatus        string
+}
+
+// Moves a notification from one of the allowed statuses to to_status and records the status event, in
+// one statement. Returns no row when the notification does not exist or is in none of the allowed
+// statuses, so concurrent transitions of the same notification have exactly one winner.
+// Column side effects follow the target status: entering sending counts an attempt and starts the
+// lease, entering sent stamps sent_at, and leaving sending ends the lease.
+func (q *Queries) TransitionNotification(ctx context.Context, arg TransitionNotificationParams) (TransitionNotificationRow, error) {
+	row := q.db.QueryRow(ctx, transitionNotification,
+		arg.ID,
+		arg.FromStatuses,
+		arg.ToStatus,
+		arg.LastError,
+		arg.ProviderMessageID,
+		arg.Reason,
+	)
+	var i TransitionNotificationRow
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.IdempotencyKey,
+		&i.RequestHash,
+		&i.Channel,
+		&i.Priority,
+		&i.Recipient,
+		&i.Content,
+		&i.Status,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.LastError,
+		&i.ProviderMessageID,
+		&i.CorrelationID,
+		&i.ScheduledAt,
+		&i.SendingStartedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SentAt,
+		&i.FromStatus,
+	)
+	return i, err
+}
