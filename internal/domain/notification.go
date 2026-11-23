@@ -84,3 +84,21 @@ type Notification struct {
 	UpdatedAt         time.Time
 	SentAt            *time.Time
 }
+
+// Valid reports whether c is one of the delivery channels.
+func (c Channel) Valid() bool {
+	switch c {
+	case ChannelSMS, ChannelEmail, ChannelPush:
+		return true
+	}
+	return false
+}
+
+// Valid reports whether s is one of the delivery statuses.
+func (s Status) Valid() bool {
+	switch s {
+	case StatusPending, StatusQueued, StatusSending, StatusSent, StatusRetryScheduled, StatusPermanentlyFailed, StatusCancelled:
+		return true
+	}
+	return false
+}

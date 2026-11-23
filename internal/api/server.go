@@ -114,8 +114,34 @@ func (s *Server) GetNotification(ctx context.Context, req oapi.GetNotificationRe
 }
 
 // ListNotifications implements GET /v1/notifications.
-func (s *Server) ListNotifications(context.Context, oapi.ListNotificationsRequestObject) (oapi.ListNotificationsResponseObject, error) {
-	return nil, errNotImplemented
+func (s *Server) ListNotifications(ctx context.Context, req oapi.ListNotificationsRequestObject) (oapi.ListNotificationsResponseObject, error) {
+	p := req.Params
+	lr := service.ListRequest{Limit: p.Limit, Cursor: p.Cursor}
+	if p.Status != nil {
+		lr.Status = domain.Status(*p.Status)
+	}
+	if p.Channel != nil {
+		lr.Channel = domain.Channel(*p.Channel)
+	}
+	if p.CreatedFrom != nil {
+		lr.CreatedFrom = *p.CreatedFrom
+	}
+	if p.CreatedTo != nil {
+		lr.CreatedTo = *p.CreatedTo
+	}
+	page, err := s.svc.List(ctx, lr)
+	if err != nil {
+		return nil, err
+	}
+	return oapi.ListNotifications200JSONResponse{Items: toNotifications(page.Items), NextCursor: nilIfEmpty(page.NextCursor)}, nil
+}
+
+func toNotifications(ns []domain.Notification) []oapi.Notification {
+	items := make([]oapi.Notification, len(ns))
+	for i, n := range ns {
+		items[i] = toNotification(n)
+	}
+	return items
 }
 
 // CancelNotification implements POST /v1/notifications/{id}/cancel.

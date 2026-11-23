@@ -43,11 +43,10 @@ func (r NotificationRequest) Validate(now time.Time) error {
 		errs = append(errs, FieldError{Field: field, Code: code, Message: message})
 	}
 
-	switch r.Channel {
-	case ChannelSMS, ChannelEmail, ChannelPush:
-	case "":
+	switch {
+	case r.Channel == "":
 		add("channel", CodeRequired, "is required")
-	default:
+	case !r.Channel.Valid():
 		add("channel", CodeInvalidValue, "must be one of sms, email, push")
 	}
 

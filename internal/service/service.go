@@ -211,3 +211,85 @@ func fieldError(field string, code domain.FieldErrorCode, message string) error 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (domain.Notification, error) {
 	return s.store.GetNotification(ctx, id)
 }
+
+// Page sizes of list endpoints.
+const (
+	defaultPageSize = 50
+	maxPageSize     = 100
+)
+
+// ListRequest selects one page of notifications as a client asked for it. Zero values and nil mean
+// "no filter" or "the default".
+type ListRequest struct {
+	Status  domain.Status
+	Channel domain.Channel
+	// CreatedFrom is inclusive; CreatedTo is exclusive.
+	CreatedFrom time.Time
+	CreatedTo   time.Time
+	Limit       *int
+	// Cursor is the NextCursor of the previous page.
+	Cursor *string
+}
+
+// Page is one page of a list. NextCursor continues it; it is "" on the last page.
+type Page struct {
+	Items      []domain.Notification
+	NextCursor string
+}
+
+// List returns one page of the notifications that match req, newest first. It returns a
+// *domain.ValidationError listing every invalid parameter.
+func (s *Service) List(ctx context.Context, req ListRequest) (Page, error) {
+	var errs []domain.FieldError
+	if req.Status != "" && !req.Status.Valid() {
+		errs = append(errs, domain.FieldError{Field: "status", Code: domain.CodeInvalidValue,
+			Message: "must be one of pending, queued, sending, sent, retry_scheduled, permanently_failed, cancelled"})
+	}
+	if req.Channel != "" && !req.Channel.Valid() {
+		errs = append(errs, domain.FieldError{Field: "channel", Code: domain.CodeInvalidValue, Message: "must be one of sms, email, push"})
+	}
+	limit, after, pageErrs := pageParams(req.Limit, req.Cursor)
+	errs = append(errs, pageErrs...)
+	if len(errs) > 0 {
+		return Page{}, &domain.ValidationError{Fields: errs}
+	}
+
+	page, err := s.store.ListNotifications(ctx, repository.ListFilter{
+		Status: req.Status, Channel: req.Channel, CreatedFrom: req.CreatedFrom, CreatedTo: req.CreatedTo,
+		After: after, Limit: limit,
+	})
+	if err != nil {
+		return Page{}, err
+	}
+	return Page{Items: page.Items, NextCursor: encodeCursor(page.Next)}, nil
+}
+
+// pageParams checks the limit and cursor of a list request and returns the page size and position.
+func pageParams(limit *int, cursor *string) (int, *repository.Cursor, []domain.FieldError) {
+	var errs []domain.FieldError
+	size := defaultPageSize
+	if limit != nil {
+		if *limit < 1 || *limit > maxPageSize {
+			errs = append(errs, domain.FieldError{Field: "limit", Code: domain.CodeInvalidValue,
+				Message: fmt.Sprintf("must be between 1 and %d", maxPageSize)})
+		}
+		size = *limit
+	}
+	var after *repository.Cursor
+	if cursor != nil {
+		c, err := repository.DecodeCursor(*cursor)
+		if err != nil {
+			errs = append(errs, domain.FieldError{Field: "cursor", Code: domain.CodeInvalidValue,
+				Message: "must be the next_cursor of a previous page"})
+		}
+		after = &c
+	}
+	return size, after, errs
+}
+
+func encodeCursor(c *repository.Cursor) string {
+	if c == nil {
+		return ""
+	}
+	return c.Encode()
+}
