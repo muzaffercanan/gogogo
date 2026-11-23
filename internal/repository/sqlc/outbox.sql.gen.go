@@ -14,18 +14,29 @@ import (
 
 const insertOutbox = `-- name: InsertOutbox :exec
 INSERT INTO outbox (notification_id, payload, available_at)
-VALUES ($1, $2, $3)
+VALUES ($1, $2, COALESCE($3::timestamptz, now()))
 `
 
 type InsertOutboxParams struct {
 	NotificationID uuid.UUID
 	Payload        []byte
-	AvailableAt    time.Time
+	AvailableAt    *time.Time
 }
 
 // Requests a dispatch of the notification once available_at has passed (first send, scheduled send
-// or retry).
+// or retry). A NULL available_at means now by the database clock, the clock the relay compares against.
 func (q *Queries) InsertOutbox(ctx context.Context, arg InsertOutboxParams) error {
 	_, err := q.db.Exec(ctx, insertOutbox, arg.NotificationID, arg.Payload, arg.AvailableAt)
+	return err
+}
+
+const notifyOutbox = `-- name: NotifyOutbox :exec
+SELECT pg_notify('outbox', '')
+`
+
+// Wakes up relays listening on the outbox channel. Inside a transaction, PostgreSQL delivers the
+// notification only when the transaction commits.
+func (q *Queries) NotifyOutbox(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, notifyOutbox)
 	return err
 }
