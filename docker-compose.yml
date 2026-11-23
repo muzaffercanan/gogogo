@@ -30,9 +30,10 @@ services:
     image: rabbitmq:4-management-alpine
     ports: ["5672:5672", "15672:15672"]
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # `ping` passes before the AMQP listener accepts connections; check the ports instead.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 5s
-      timeout: 5s
+      timeout: 10s
       retries: 30
 
   redis:
