@@ -40,6 +40,12 @@ test: ## Run unit tests
 test-integration: ## Run integration tests against throwaway containers (needs Docker)
 	go test -tags integration -count=1 ./...
 
+ifeq ($(OS),Windows_NT)
+# Without DOCKER_HOST, Testcontainers finds Docker Desktop's named pipe with os.Stat, which fails while
+# another test binary is connecting to the pipe, so packages tested in parallel fail at random.
+test-integration: export DOCKER_HOST ?= npipe:////./pipe/docker_engine
+endif
+
 .PHONY: test-race
 test-race: ## Run unit tests with the race detector inside a Linux container
 	docker run --rm -v "$(CURDIR)":/src -v gogogo-gomod:/go/pkg/mod -w /src $(GO_IMAGE) go test -race -count=1 ./...

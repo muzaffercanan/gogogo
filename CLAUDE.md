@@ -28,9 +28,11 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 - All text files are LF (`.gitattributes`). Shell scripts must be POSIX `sh`.
 - The race detector needs cgo, so run race tests in Docker/CI rather than natively on Windows.
 - Makefile recipes use POSIX `sh` syntax; on Windows, run `make` from Git Bash.
-- Integration tests need Docker. Prefer `make test-integration`: it sets the Testcontainers socket
-  override that Docker Desktop needs. Running `go test -tags integration` by hand from Git Bash needs
-  `MSYS_NO_PATHCONV=1 TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`.
+- Integration tests need Docker. Prefer `make test-integration`: it sets what Testcontainers needs on
+  Docker Desktop. Running `go test -tags integration` by hand from Git Bash on Windows needs
+  `MSYS_NO_PATHCONV=1 TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+  DOCKER_HOST=npipe:////./pipe/docker_engine` (without `DOCKER_HOST`, packages tested in parallel fail
+  at random to find Docker).
 
 ## Commands
 
