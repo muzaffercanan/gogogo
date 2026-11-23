@@ -22,7 +22,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "worker: %v\n", err)
+		logging.New(os.Stdout, "error").Error("exiting", "service", "worker", "error", err)
 		os.Exit(1)
 	}
 }

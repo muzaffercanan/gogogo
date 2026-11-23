@@ -19,7 +19,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "api: %v\n", err)
+		logging.New(os.Stdout, "error").Error("exiting", "service", "api", "error", err)
 		os.Exit(1)
 	}
 }

@@ -21,7 +21,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "relay: %v\n", err)
+		logging.New(os.Stdout, "error").Error("exiting", "service", "relay", "error", err)
 		os.Exit(1)
 	}
 }

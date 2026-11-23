@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,7 +17,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "mockprovider: %v\n", err)
+		logging.New(os.Stdout, "error").Error("exiting", "service", "mockprovider", "error", err)
 		os.Exit(1)
 	}
 }
