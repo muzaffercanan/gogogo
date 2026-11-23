@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -22,9 +21,6 @@ const (
 	maxBatchBodyBytes = 10 << 20
 	batchPath         = "/v1/notifications/batch"
 )
-
-// errNotImplemented answers operations that are not implemented yet.
-var errNotImplemented = errors.New("operation not implemented")
 
 // Server implements the operations of api/openapi.yaml on top of the service. Handlers translate
 // between API and domain types and return errors as they are: ResponseErrorHandler maps them to
@@ -145,8 +141,12 @@ func toNotifications(ns []domain.Notification) []oapi.Notification {
 }
 
 // CancelNotification implements POST /v1/notifications/{id}/cancel.
-func (s *Server) CancelNotification(context.Context, oapi.CancelNotificationRequestObject) (oapi.CancelNotificationResponseObject, error) {
-	return nil, errNotImplemented
+func (s *Server) CancelNotification(ctx context.Context, req oapi.CancelNotificationRequestObject) (oapi.CancelNotificationResponseObject, error) {
+	n, err := s.svc.Cancel(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return oapi.CancelNotification200JSONResponse(toNotification(n)), nil
 }
 
 // GetBatch implements GET /v1/batches/{id}.

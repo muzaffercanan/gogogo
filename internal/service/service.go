@@ -316,3 +316,22 @@ func (s *Service) GetBatch(ctx context.Context, id uuid.UUID, limit *int, cursor
 	}
 	return BatchPage{Batch: page.Batch, Counts: page.Counts, Items: page.Items, NextCursor: encodeCursor(page.Next)}, nil
 }
+
+// Cancel cancels notification id if it has not been handed to the provider yet (it is pending, queued
+// or retry_scheduled), and returns it. Cancelling a cancelled notification succeeds and returns it
+// unchanged. Otherwise it returns a *domain.StatusConflictError, or an error wrapping
+// domain.ErrNotFound if the notification does not exist.
+func (s *Service) Cancel(ctx context.Context, id uuid.UUID) (domain.Notification, error) {
+	n, err := s.store.TransitionNotification(ctx, repository.Transition{
+		ID:     id,
+		From:   domain.AllowedFrom(domain.StatusCancelled),
+		To:     domain.StatusCancelled,
+		Reason: "cancelled by client",
+	})
+	var conflict *domain.StatusConflictError
+	if errors.As(err, &conflict) && conflict.Current == domain.StatusCancelled {
+		// Cancelled is terminal, so the notification cannot have changed since.
+		return s.store.GetNotification(ctx, id)
+	}
+	return n, err
+}
