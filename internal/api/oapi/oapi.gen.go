@@ -281,8 +281,9 @@ type NotificationCreate struct {
 	Priority *Priority `json:"priority,omitempty"`
 
 	// Recipient Where to deliver, depending on `channel`:
-	// - `sms`: phone number in E.164 format, e.g. `+905551234567`.
-	// - `email`: a single email address.
+	// - `sms`: phone number in E.164 format, e.g. `+905551234567`: a `+` and 2 to 15 digits, the
+	//   first of which is not 0. Only the format is checked, not whether the number exists.
+	// - `email`: a single email address without a display name, e.g. `jane@example.com`.
 	// - `push`: device token, at most 4096 bytes, without whitespace.
 	Recipient string `json:"recipient"`
 
