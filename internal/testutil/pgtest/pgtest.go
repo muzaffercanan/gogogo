@@ -141,14 +141,21 @@ func (s *Server) NewDatabase(tb testing.TB) *pgxpool.Pool {
 
 	tb.Cleanup(func() {
 		pool.Close()
-		dropCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Dropping only frees disk while the binary runs: the container and every database in it are
+		// discarded at the end. A drop that fails, for example because a loaded Docker host makes it
+		// slow, says nothing about the code under test, so it is logged rather than failing the test.
+		dropCtx, cancel := context.WithTimeout(context.Background(), dropTimeout)
 		defer cancel()
 		if _, err := s.admin.Exec(dropCtx, "DROP DATABASE "+ident+" WITH (FORCE)"); err != nil {
-			tb.Errorf("dropping database %s: %v", name, err)
+			tb.Logf("pgtest: could not drop database %s, leaving it to the container's end: %v", name, err)
 		}
 	})
 	return pool
 }
+
+// dropTimeout bounds dropping a test database. It is generous because drops wait for the server under
+// the load of parallel test binaries.
+const dropTimeout = time.Minute
 
 // upMigrations returns the absolute paths of migrations/*.up.sql in version order.
 func upMigrations() ([]string, error) {
