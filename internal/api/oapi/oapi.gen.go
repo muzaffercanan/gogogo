@@ -267,8 +267,11 @@ type NotificationCreate struct {
 
 	// Content Message body. Limits depend on `channel`:
 	// - `sms`: at most 6 segments. Text that fits the GSM 7-bit alphabet allows 160 characters in
-	//   one segment or 153 per segment when split; any other character (for example `ş`, `ğ`, `ı`)
-	//   switches the whole message to UCS-2, which allows 70 characters, or 67 per segment.
+	//   one segment or 153 per segment when split; `€`, `[`, `]`, `{`, `}`, `\`, `^`, `~` and `|`
+	//   count as two. Any other character (for example `ç`, `ş`, `ğ`, `ı` or an emoji) switches the
+	//   whole message to UCS-2, which allows 70 characters, or 67 per segment; emoji and other
+	//   characters outside the Basic Multilingual Plane count as two. A character is never split
+	//   across segments.
 	// - `email`: at most 100 KB (UTF-8).
 	// - `push`: at most 4 KB (UTF-8).
 	Content string `json:"content"`
