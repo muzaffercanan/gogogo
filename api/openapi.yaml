@@ -15,7 +15,9 @@ info:
 
     **Idempotency.** Create endpoints accept an `Idempotency-Key` header. Repeating a request with the
     same key and the same body returns the original result with `Idempotent-Replayed: true`; reusing a
-    key with a different body is rejected with `422`. Keys are global and do not expire.
+    key with a different body is rejected with `422`. Keys are global and do not expire. Bodies are
+    compared by meaning: the order of fields, whitespace and unknown fields do not matter, an omitted
+    `priority` equals `normal`, and `scheduled_at` values that denote the same instant are equal.
 
     **Correlation IDs.** Every response carries an `X-Correlation-ID` header. If the request sends one, it
     is propagated; otherwise the server generates it. The same ID appears in the server logs of the API
