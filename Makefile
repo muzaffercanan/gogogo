@@ -3,8 +3,9 @@ SHELL := /bin/sh
 # Stop Git Bash from rewriting container paths such as /src.
 export MSYS_NO_PATHCONV := 1
 
-GO_IMAGE ?= golang:1.27
-COMPOSE  ?= docker compose
+GO_IMAGE   ?= golang:1.27
+SQLC_IMAGE ?= sqlc/sqlc:1.31.1
+COMPOSE    ?= docker compose
 
 .DEFAULT_GOAL := help
 
@@ -37,8 +38,12 @@ test-race: ## Run unit tests with the race detector inside a Linux container
 	docker run --rm -v "$(CURDIR)":/src -v gogogo-gomod:/go/pkg/mod -w /src $(GO_IMAGE) go test -race -count=1 ./...
 
 .PHONY: generate
-generate: ## Regenerate code from api/openapi.yaml
+generate: sqlc ## Regenerate all generated code (OpenAPI types and sqlc queries)
 	go generate ./...
+
+.PHONY: sqlc
+sqlc: ## Regenerate query code from SQL with sqlc (runs in Docker: sqlc needs cgo)
+	docker run --rm -v "$(CURDIR)":/src -w /src $(SQLC_IMAGE) generate
 
 .PHONY: lint
 lint: ## Run golangci-lint

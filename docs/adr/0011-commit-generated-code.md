@@ -1,4 +1,4 @@
-# 0011. Generated code is committed; generators are pinned as Go tools
+# 0011. Generated code is committed; generator versions are pinned
 
 - **Status:** Accepted
 - **Date:** 2026-11-23
@@ -12,12 +12,14 @@ in a container.
 
 ## Decision
 
-- Generated Go code is committed next to its configuration, e.g. `internal/api/oapi/oapi.gen.go`.
-  The same rule applies to the `sqlc` output.
+- Generated Go code is committed: `internal/api/oapi/oapi.gen.go` (from the spec) and
+  `internal/repository/sqlc/*.gen.go` (from `internal/repository/queries/*.sql` and the migrations).
 - `make generate` regenerates everything. CI regenerates and fails if the working tree changes, so a spec
   change without regenerated code cannot be merged.
 - `oapi-codegen` is pinned with a `tool` directive in `go.mod` and invoked as `go tool oapi-codegen` from a
   `//go:generate` line, so every machine and CI run the same version without a global install.
+- `sqlc` needs cgo, so it runs from a pinned Docker image (`SQLC_IMAGE` in the Makefile) instead of as a
+  Go tool. Regenerating therefore needs Docker; building and testing do not.
 - `*.gen.go` files are marked `linguist-generated`, so GitHub collapses them in diffs.
 - A unit test validates the spec, including its examples, because the generator does not check examples.
 

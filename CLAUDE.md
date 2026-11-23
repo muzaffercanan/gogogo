@@ -39,7 +39,7 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 | Race tests (Linux container) | `make test-race` |
 | Lint | `make lint` (`golangci-lint run ./...`, config in `.golangci.yml`) |
 | Build binaries | `make build` → `./bin` |
-| Regenerate code after changing `api/openapi.yaml` | `make generate` (`go generate ./...`) |
+| Regenerate code after changing `api/openapi.yaml`, SQL queries or migrations | `make generate` (oapi-codegen + sqlc; sqlc runs in Docker) |
 
 Ports: api 8080, relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest).
 Every process serves `/health/live`, `/health/ready` and `/metrics`.
@@ -49,6 +49,8 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `cmd/{api,relay,worker,mockprovider}`: entrypoints, all built into one image (`Dockerfile`).
 - `api/openapi.yaml`: the API contract (source of truth for request/response shapes).
 - `internal/api/oapi`: types and strict server interface generated from the spec (`oapi.gen.go`).
+- `internal/repository/queries`: SQL queries; `sqlc` (config `sqlc.yaml`) generates
+  `internal/repository/sqlc` from them and the migrations.
 - `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.
 - `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
