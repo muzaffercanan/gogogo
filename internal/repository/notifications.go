@@ -110,6 +110,19 @@ func (s *Store) CreateNotification(ctx context.Context, n domain.NewNotification
 	return stored, created, nil
 }
 
+// GetNotification returns the notification with the given ID. It returns an error wrapping
+// domain.ErrNotFound if there is none.
+func (s *Store) GetNotification(ctx context.Context, id uuid.UUID) (domain.Notification, error) {
+	row, err := sqlc.New(s.pool).GetNotification(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Notification{}, fmt.Errorf("notification %s: %w", id, domain.ErrNotFound)
+	}
+	if err != nil {
+		return domain.Notification{}, fmt.Errorf("reading notification %s: %w", id, err)
+	}
+	return toDomain(row), nil
+}
+
 // GetNotificationByIdempotencyKey returns the notification created with key. It returns an error
 // wrapping domain.ErrNotFound if there is none.
 func (s *Store) GetNotificationByIdempotencyKey(ctx context.Context, key string) (domain.Notification, error) {

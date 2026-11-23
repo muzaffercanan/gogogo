@@ -206,3 +206,8 @@ func replayBatch(existing domain.Batch, hash []byte) (domain.Batch, bool, error)
 func fieldError(field string, code domain.FieldErrorCode, message string) error {
 	return &domain.ValidationError{Fields: []domain.FieldError{{Field: field, Code: code, Message: message}}}
 }
+
+// Get returns the notification with the given ID, or an error wrapping domain.ErrNotFound.
+func (s *Service) Get(ctx context.Context, id uuid.UUID) (domain.Notification, error) {
+	return s.store.GetNotification(ctx, id)
+}

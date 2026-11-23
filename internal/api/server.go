@@ -105,8 +105,12 @@ func toBatchResult(b domain.Batch) oapi.BatchCreateResult {
 }
 
 // GetNotification implements GET /v1/notifications/{id}.
-func (s *Server) GetNotification(context.Context, oapi.GetNotificationRequestObject) (oapi.GetNotificationResponseObject, error) {
-	return nil, errNotImplemented
+func (s *Server) GetNotification(ctx context.Context, req oapi.GetNotificationRequestObject) (oapi.GetNotificationResponseObject, error) {
+	n, err := s.svc.Get(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return oapi.GetNotification200JSONResponse(toNotification(n)), nil
 }
 
 // ListNotifications implements GET /v1/notifications.
