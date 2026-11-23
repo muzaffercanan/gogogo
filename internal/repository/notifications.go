@@ -113,7 +113,8 @@ func (s *Store) CreateNotification(ctx context.Context, n domain.NewNotification
 // Transition is a guarded status change of one notification.
 type Transition struct {
 	ID uuid.UUID
-	// From lists the statuses the change is allowed from.
+	// From lists the statuses the change is allowed from: domain.AllowedFrom(To), or a part of it when
+	// the caller expects fewer.
 	From []domain.Status
 	To   domain.Status
 	// Reason is recorded on the status event. Optional.
@@ -128,9 +129,11 @@ type Transition struct {
 // status event in the same statement. Entering sending counts an attempt and starts the delivery lease,
 // entering sent stamps sent_at, and leaving sending ends the lease.
 //
-// It returns an error wrapping domain.ErrNotFound if the notification does not exist, and a
-// *domain.StatusConflictError if it is in another status, for example because a concurrent transition
-// won. In both cases nothing is written.
+// It returns an error wrapping domain.ErrInvalidTransition, before touching the database, if t.From is
+// empty or the state machine does not allow one of its statuses to move to t.To. It returns an error
+// wrapping domain.ErrNotFound if the notification does not exist, and a *domain.StatusConflictError if
+// it is in another status, for example because a concurrent transition won. In all these cases nothing
+// is written.
 func (s *Store) TransitionNotification(ctx context.Context, t Transition) (domain.Notification, error) {
 	return transition(ctx, sqlc.New(s.pool), t)
 }
@@ -139,10 +142,13 @@ func (s *Store) TransitionNotification(ctx context.Context, t Transition) (domai
 // (a retry also inserts an outbox row) can run it inside their own transaction.
 func transition(ctx context.Context, q *sqlc.Queries, t Transition) (domain.Notification, error) {
 	if len(t.From) == 0 {
-		return domain.Notification{}, errors.New("transition without allowed source statuses")
+		return domain.Notification{}, fmt.Errorf("moving notification %s to %s from no status: %w", t.ID, t.To, domain.ErrInvalidTransition)
 	}
 	from := make([]string, len(t.From))
 	for i, st := range t.From {
+		if !domain.CanTransition(st, t.To) {
+			return domain.Notification{}, fmt.Errorf("moving notification %s from %s to %s: %w", t.ID, st, t.To, domain.ErrInvalidTransition)
+		}
 		from[i] = string(st)
 	}
 

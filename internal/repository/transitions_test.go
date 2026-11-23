@@ -15,8 +15,6 @@ import (
 	"github.com/muzaffercanan/gogogo/internal/repository"
 )
 
-var cancellable = []domain.Status{domain.StatusPending, domain.StatusQueued, domain.StatusRetryScheduled}
-
 func TestTransitionNotification(t *testing.T) {
 	ctx := context.Background()
 	db := pg.NewDatabase(t)
@@ -35,24 +33,24 @@ func TestTransitionNotification(t *testing.T) {
 		{
 			name:       "pending to queued",
 			start:      domain.StatusPending,
-			transition: repository.Transition{From: []domain.Status{domain.StatusPending, domain.StatusRetryScheduled}, To: domain.StatusQueued},
+			transition: repository.Transition{From: domain.AllowedFrom(domain.StatusQueued), To: domain.StatusQueued},
 		},
 		{
 			name:       "retry_scheduled to queued records the actual source status",
 			start:      domain.StatusRetryScheduled,
-			transition: repository.Transition{From: []domain.Status{domain.StatusPending, domain.StatusRetryScheduled}, To: domain.StatusQueued},
+			transition: repository.Transition{From: domain.AllowedFrom(domain.StatusQueued), To: domain.StatusQueued},
 		},
 		{
 			name:         "queued to sending counts an attempt and starts the lease",
 			start:        domain.StatusQueued,
-			transition:   repository.Transition{From: []domain.Status{domain.StatusQueued}, To: domain.StatusSending},
+			transition:   repository.Transition{From: domain.AllowedFrom(domain.StatusSending), To: domain.StatusSending},
 			wantAttempts: 1,
 			wantLease:    true,
 		},
 		{
 			name:           "sending to sent stores the provider id and ends the lease",
 			start:          domain.StatusSending,
-			transition:     repository.Transition{From: []domain.Status{domain.StatusSending}, To: domain.StatusSent, ProviderMessageID: "pm-1"},
+			transition:     repository.Transition{From: domain.AllowedFrom(domain.StatusSent), To: domain.StatusSent, ProviderMessageID: "pm-1"},
 			wantSentAt:     true,
 			wantProviderID: "pm-1",
 		},
@@ -60,7 +58,7 @@ func TestTransitionNotification(t *testing.T) {
 			name:  "sending to retry_scheduled keeps the error and ends the lease",
 			start: domain.StatusSending,
 			transition: repository.Transition{
-				From: []domain.Status{domain.StatusSending}, To: domain.StatusRetryScheduled,
+				From: domain.AllowedFrom(domain.StatusRetryScheduled), To: domain.StatusRetryScheduled,
 				LastError: "provider returned 503", Reason: "retryable provider error",
 			},
 			wantLastError: "provider returned 503",
@@ -68,7 +66,7 @@ func TestTransitionNotification(t *testing.T) {
 		{
 			name:       "queued to cancelled",
 			start:      domain.StatusQueued,
-			transition: repository.Transition{From: cancellable, To: domain.StatusCancelled, Reason: "cancelled by client"},
+			transition: repository.Transition{From: domain.AllowedFrom(domain.StatusCancelled), To: domain.StatusCancelled, Reason: "cancelled by client"},
 		},
 	}
 	for _, tt := range tests {
@@ -110,7 +108,7 @@ func TestTransitionNotificationFromOtherStatusIsRefused(t *testing.T) {
 	store := repository.New(db)
 	id := createInStatus(ctx, t, store, db, domain.StatusSent)
 
-	_, err := store.TransitionNotification(ctx, repository.Transition{ID: id, From: cancellable, To: domain.StatusCancelled})
+	_, err := store.TransitionNotification(ctx, repository.Transition{ID: id, From: domain.AllowedFrom(domain.StatusCancelled), To: domain.StatusCancelled})
 
 	var conflict *domain.StatusConflictError
 	if !errors.As(err, &conflict) {
@@ -131,10 +129,48 @@ func TestTransitionNotificationUnknownID(t *testing.T) {
 	store := repository.New(pg.NewDatabase(t))
 
 	_, err := store.TransitionNotification(context.Background(), repository.Transition{
-		ID: uuid.Must(uuid.NewV7()), From: cancellable, To: domain.StatusCancelled,
+		ID: uuid.Must(uuid.NewV7()), From: domain.AllowedFrom(domain.StatusCancelled), To: domain.StatusCancelled,
 	})
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("error = %v, want domain.ErrNotFound", err)
+	}
+}
+
+// TestTransitionNotificationRejectsInvalidTransition stores each notification in a status listed in
+// From, so the SQL guard alone would apply the change: only the state machine check refuses it.
+func TestTransitionNotificationRejectsInvalidTransition(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+
+	tests := []struct {
+		name  string
+		start domain.Status
+		from  []domain.Status
+		to    domain.Status
+	}{
+		{"cancel a sent notification", domain.StatusSent, []domain.Status{domain.StatusSent}, domain.StatusCancelled},
+		{"skip sending", domain.StatusQueued, []domain.Status{domain.StatusQueued}, domain.StatusSent},
+		{"requeue a permanent failure", domain.StatusPermanentlyFailed, []domain.Status{domain.StatusPermanentlyFailed}, domain.StatusQueued},
+		{"one invalid status among valid ones", domain.StatusSent, []domain.Status{domain.StatusQueued, domain.StatusSent}, domain.StatusCancelled},
+		{"back to pending", domain.StatusQueued, []domain.Status{domain.StatusQueued}, domain.StatusPending},
+		{"no source status", domain.StatusPending, nil, domain.StatusCancelled},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id := createInStatus(ctx, t, store, db, tt.start)
+
+			_, err := store.TransitionNotification(ctx, repository.Transition{ID: id, From: tt.from, To: tt.to})
+			if !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatalf("error = %v, want domain.ErrInvalidTransition", err)
+			}
+			if status := statusOf(ctx, t, db, id); status != tt.start {
+				t.Errorf("status = %s after a refused transition, want %s", status, tt.start)
+			}
+			if n := eventCount(ctx, t, db, id); n != 1 {
+				t.Errorf("%d status events, want only the creation event", n)
+			}
+		})
 	}
 }
 
@@ -153,9 +189,9 @@ func TestTransitionNotificationRaceHasOneWinner(t *testing.T) {
 		winners []domain.Status
 	)
 	for i := range callers {
-		tr := repository.Transition{ID: id, From: []domain.Status{domain.StatusQueued}, To: domain.StatusSending}
+		tr := repository.Transition{ID: id, From: domain.AllowedFrom(domain.StatusSending), To: domain.StatusSending}
 		if i%2 == 1 {
-			tr = repository.Transition{ID: id, From: cancellable, To: domain.StatusCancelled}
+			tr = repository.Transition{ID: id, From: domain.AllowedFrom(domain.StatusCancelled), To: domain.StatusCancelled}
 		}
 		wg.Go(func() {
 			got, err := store.TransitionNotification(ctx, tr)
