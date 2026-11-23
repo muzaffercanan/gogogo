@@ -1,0 +1,15 @@
+# Normalize all text files to LF, in the repo and in the working tree,
+# so shell scripts and config files behave the same on Windows, macOS, Linux and in containers.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
