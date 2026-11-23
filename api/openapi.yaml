@@ -19,8 +19,9 @@ info:
     compared by meaning: the order of fields, whitespace and unknown fields do not matter, an omitted
     `priority` equals `normal`, and `scheduled_at` values that denote the same instant are equal.
 
-    **Correlation IDs.** Every response carries an `X-Correlation-ID` header. If the request sends one, it
-    is propagated; otherwise the server generates it. The same ID appears in the server logs of the API
+    **Correlation IDs.** Every response carries an `X-Correlation-ID` header. If the request sends a valid
+    one (1 to 128 letters, digits, `.`, `_`, `:` or `-`), it is propagated; otherwise the server
+    generates one. The same ID appears in the server logs of the API
     and of the background workers that process the notification.
 
     **Errors.** Every error response uses `application/problem+json` (RFC 9457). `type` is a stable,
