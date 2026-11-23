@@ -6,6 +6,8 @@ info:
   description: |
     Accepts notification requests and delivers them asynchronously over SMS, Email and Push.
 
+    The running API serves this document at `/openapi.yaml` and renders it with Swagger UI at `/docs`.
+
     **Asynchronous by design.** A successful create returns `202 Accepted`: the notification is stored
     and will be dispatched by background workers. Track it with `GET /v1/notifications/{id}`.
 

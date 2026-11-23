@@ -40,6 +40,8 @@ func NewHandler(svc *service.Service, logger *slog.Logger, reg prometheus.Regist
 	})
 	mux := http.NewServeMux()
 	oapi.HandlerWithOptions(strict, oapi.StdHTTPServerOptions{BaseRouter: mux, ErrorHandlerFunc: RequestErrorHandler})
+	mux.HandleFunc("GET /docs", serveDocs)
+	mux.HandleFunc("GET /openapi.yaml", serveSpec)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		WriteProblem(w, r, ProblemFor(domain.ErrNotFound))
 	})
