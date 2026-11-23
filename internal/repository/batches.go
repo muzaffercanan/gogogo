@@ -190,3 +190,74 @@ func toBatch(r sqlc.Batch) (domain.Batch, error) {
 	}
 	return b, nil
 }
+
+// BatchPage is a batch with the number of its notifications in each status and one page of them.
+type BatchPage struct {
+	Batch domain.Batch
+	// Counts holds the number of the batch's notifications per status; statuses without any are absent.
+	Counts map[domain.Status]int
+	// Items holds the page of notifications, oldest first.
+	Items []domain.Notification
+	// Next is the position to continue from, or nil on the last page.
+	Next *Cursor
+}
+
+// GetBatchPage returns batch id, its status counts and up to limit of its notifications after the
+// position after (nil for the first page). Everything is read from one snapshot, so the counts match the
+// items. It returns an error wrapping domain.ErrNotFound if the batch does not exist.
+func (s *Store) GetBatchPage(ctx context.Context, id uuid.UUID, after *Cursor, limit int) (BatchPage, error) {
+	if limit <= 0 {
+		return BatchPage{}, fmt.Errorf("page limit must be positive, got %d", limit)
+	}
+	rowLimit, err := toInt32(limit + 1)
+	if err != nil {
+		return BatchPage{}, fmt.Errorf("page limit: %w", err)
+	}
+	var page BatchPage
+	opts := pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}
+	err = pgx.BeginTxFunc(ctx, s.pool, opts, func(tx pgx.Tx) error {
+		q := sqlc.New(tx)
+		row, err := q.GetBatch(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("batch %s: %w", id, domain.ErrNotFound)
+		}
+		if err != nil {
+			return fmt.Errorf("reading batch: %w", err)
+		}
+		if page.Batch, err = toBatch(row); err != nil {
+			return err
+		}
+
+		counts, err := q.CountBatchNotificationsByStatus(ctx, &id)
+		if err != nil {
+			return fmt.Errorf("counting batch notifications: %w", err)
+		}
+		page.Counts = make(map[domain.Status]int, len(counts))
+		for _, c := range counts {
+			page.Counts[domain.Status(c.Status)] = int(c.Notifications)
+		}
+
+		params := sqlc.ListBatchNotificationsParams{BatchID: &id, RowLimit: rowLimit}
+		if after != nil {
+			params.AfterCreatedAt, params.AfterID = after.CreatedAt, after.ID
+		}
+		rows, err := q.ListBatchNotifications(ctx, params)
+		if err != nil {
+			return fmt.Errorf("listing batch notifications: %w", err)
+		}
+		for _, r := range rows {
+			page.Items = append(page.Items, toDomain(r))
+		}
+		// One row more than the limit tells whether another page exists.
+		if len(page.Items) > limit {
+			page.Items = page.Items[:limit]
+			last := page.Items[limit-1]
+			page.Next = &Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		}
+		return nil
+	})
+	if err != nil {
+		return BatchPage{}, fmt.Errorf("reading batch %s: %w", id, err)
+	}
+	return page, nil
+}

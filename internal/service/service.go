@@ -293,3 +293,26 @@ func encodeCursor(c *repository.Cursor) string {
 	}
 	return c.Encode()
 }
+
+// BatchPage is a batch with the number of its notifications in each status and one page of them,
+// oldest first. NextCursor continues the page; it is "" on the last page.
+type BatchPage struct {
+	Batch      domain.Batch
+	Counts     map[domain.Status]int
+	Items      []domain.Notification
+	NextCursor string
+}
+
+// GetBatch returns batch id with its status counts and one page of its notifications. limit and cursor
+// work as for List. It returns an error wrapping domain.ErrNotFound if the batch does not exist.
+func (s *Service) GetBatch(ctx context.Context, id uuid.UUID, limit *int, cursor *string) (BatchPage, error) {
+	size, after, errs := pageParams(limit, cursor)
+	if len(errs) > 0 {
+		return BatchPage{}, &domain.ValidationError{Fields: errs}
+	}
+	page, err := s.store.GetBatchPage(ctx, id, after, size)
+	if err != nil {
+		return BatchPage{}, err
+	}
+	return BatchPage{Batch: page.Batch, Counts: page.Counts, Items: page.Items, NextCursor: encodeCursor(page.Next)}, nil
+}

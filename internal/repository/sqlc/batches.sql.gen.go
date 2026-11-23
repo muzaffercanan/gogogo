@@ -12,6 +12,38 @@ import (
 	"github.com/google/uuid"
 )
 
+const countBatchNotificationsByStatus = `-- name: CountBatchNotificationsByStatus :many
+SELECT status, count(*)::integer AS notifications
+FROM notifications
+WHERE batch_id = $1
+GROUP BY status
+`
+
+type CountBatchNotificationsByStatusRow struct {
+	Status        string
+	Notifications int32
+}
+
+func (q *Queries) CountBatchNotificationsByStatus(ctx context.Context, batchID *uuid.UUID) ([]CountBatchNotificationsByStatusRow, error) {
+	rows, err := q.db.Query(ctx, countBatchNotificationsByStatus, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountBatchNotificationsByStatusRow
+	for rows.Next() {
+		var i CountBatchNotificationsByStatusRow
+		if err := rows.Scan(&i.Status, &i.Notifications); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBatch = `-- name: GetBatch :one
 SELECT id, idempotency_key, request_hash, total_count, accepted_count, rejected_count, created_at, item_results FROM batches
 WHERE id = $1
@@ -186,4 +218,66 @@ func (q *Queries) InsertBatchOutbox(ctx context.Context, arg InsertBatchOutboxPa
 		arg.ScheduledAts,
 	)
 	return err
+}
+
+const listBatchNotifications = `-- name: ListBatchNotifications :many
+SELECT id, batch_id, idempotency_key, request_hash, channel, priority, recipient, content, status, attempts, max_attempts, last_error, provider_message_id, correlation_id, scheduled_at, sending_started_at, created_at, updated_at, sent_at FROM notifications
+WHERE batch_id = $1 AND (created_at, id) > ($2::timestamptz, $3::uuid)
+ORDER BY created_at, id
+LIMIT $4
+`
+
+type ListBatchNotificationsParams struct {
+	BatchID        *uuid.UUID
+	AfterCreatedAt time.Time
+	AfterID        uuid.UUID
+	RowLimit       int32
+}
+
+// One page of a batch's notifications, oldest first, after the position (after_created_at, after_id).
+// The first page passes the zero position, which precedes every row, so one static query serves all
+// pages. A batch has at most 1000 notifications, which bounds the sort.
+func (q *Queries) ListBatchNotifications(ctx context.Context, arg ListBatchNotificationsParams) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, listBatchNotifications,
+		arg.BatchID,
+		arg.AfterCreatedAt,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notification
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.BatchID,
+			&i.IdempotencyKey,
+			&i.RequestHash,
+			&i.Channel,
+			&i.Priority,
+			&i.Recipient,
+			&i.Content,
+			&i.Status,
+			&i.Attempts,
+			&i.MaxAttempts,
+			&i.LastError,
+			&i.ProviderMessageID,
+			&i.CorrelationID,
+			&i.ScheduledAt,
+			&i.SendingStartedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SentAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

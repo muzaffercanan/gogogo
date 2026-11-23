@@ -150,8 +150,30 @@ func (s *Server) CancelNotification(context.Context, oapi.CancelNotificationRequ
 }
 
 // GetBatch implements GET /v1/batches/{id}.
-func (s *Server) GetBatch(context.Context, oapi.GetBatchRequestObject) (oapi.GetBatchResponseObject, error) {
-	return nil, errNotImplemented
+func (s *Server) GetBatch(ctx context.Context, req oapi.GetBatchRequestObject) (oapi.GetBatchResponseObject, error) {
+	page, err := s.svc.GetBatch(ctx, req.Id, req.Params.Limit, req.Params.Cursor)
+	if err != nil {
+		return nil, err
+	}
+	b, c := page.Batch, page.Counts
+	return oapi.GetBatch200JSONResponse{
+		Id:        b.ID,
+		Total:     b.Total,
+		Accepted:  b.Accepted,
+		Rejected:  b.Rejected,
+		CreatedAt: b.CreatedAt.UTC(),
+		StatusCounts: oapi.StatusCounts{
+			Pending:           c[domain.StatusPending],
+			Queued:            c[domain.StatusQueued],
+			Sending:           c[domain.StatusSending],
+			Sent:              c[domain.StatusSent],
+			RetryScheduled:    c[domain.StatusRetryScheduled],
+			PermanentlyFailed: c[domain.StatusPermanentlyFailed],
+			Cancelled:         c[domain.StatusCancelled],
+		},
+		Items:      toNotifications(page.Items),
+		NextCursor: nilIfEmpty(page.NextCursor),
+	}, nil
 }
 
 func toRequest(b oapi.NotificationCreate) domain.NotificationRequest {

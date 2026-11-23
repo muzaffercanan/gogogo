@@ -50,3 +50,18 @@ FROM (
 INSERT INTO notification_events (notification_id, to_status)
 SELECT t.id, 'pending'
 FROM unnest(@ids::uuid[]) AS t(id);
+
+-- name: CountBatchNotificationsByStatus :many
+SELECT status, count(*)::integer AS notifications
+FROM notifications
+WHERE batch_id = @batch_id
+GROUP BY status;
+
+-- name: ListBatchNotifications :many
+-- One page of a batch's notifications, oldest first, after the position (after_created_at, after_id).
+-- The first page passes the zero position, which precedes every row, so one static query serves all
+-- pages. A batch has at most 1000 notifications, which bounds the sort.
+SELECT * FROM notifications
+WHERE batch_id = @batch_id AND (created_at, id) > (@after_created_at::timestamptz, @after_id::uuid)
+ORDER BY created_at, id
+LIMIT @row_limit;
