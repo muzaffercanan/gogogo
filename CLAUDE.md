@@ -31,7 +31,25 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 
 ## Commands
 
-To be filled in once the skeleton exists (build, run, test, lint, migrate).
+| Task | Command |
+|---|---|
+| Start everything (Postgres, RabbitMQ, Redis, migrations, api, relay, worker, mock provider) | `docker compose up --build -d` or `make up` |
+| Stop / wipe data | `make down` / `docker compose down -v` |
+| Unit tests | `make test` (`go test -count=1 ./...`) |
+| Race tests (Linux container) | `make test-race` |
+| Lint | `make lint` (`golangci-lint run ./...`, config in `.golangci.yml`) |
+| Build binaries | `make build` → `./bin` |
+
+Ports: api 8080, relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest).
+Every process serves `/health/live`, `/health/ready` and `/metrics`.
+
+## Layout
+
+- `cmd/{api,relay,worker,mockprovider}`: entrypoints, all built into one image (`Dockerfile`).
+- `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.
+- `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
+- `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
+- `docs/adr/`: architecture decision records.
 
 ## Code conventions
 
