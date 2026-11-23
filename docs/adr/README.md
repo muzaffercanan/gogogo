@@ -14,3 +14,4 @@ Short records of the significant design decisions: context, decision, alternativ
 | [0008](0008-idempotency-keys-in-postgres.md) | Idempotency keys stored in PostgreSQL | Accepted |
 | [0009](0009-retry-and-failure-handling.md) | Retry policy, dead-lettering and circuit breaking | Accepted |
 | [0010](0010-realtime-status-via-redis-pubsub.md) | Real-time status updates over WebSocket via Redis pub/sub | Accepted |
+| [0011](0011-commit-generated-code.md) | Generated code is committed; generators are pinned as Go tools | Accepted |

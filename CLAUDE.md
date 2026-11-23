@@ -39,6 +39,7 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 | Race tests (Linux container) | `make test-race` |
 | Lint | `make lint` (`golangci-lint run ./...`, config in `.golangci.yml`) |
 | Build binaries | `make build` → `./bin` |
+| Regenerate code after changing `api/openapi.yaml` | `make generate` (`go generate ./...`) |
 
 Ports: api 8080, relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest).
 Every process serves `/health/live`, `/health/ready` and `/metrics`.
@@ -46,6 +47,8 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 ## Layout
 
 - `cmd/{api,relay,worker,mockprovider}`: entrypoints, all built into one image (`Dockerfile`).
+- `api/openapi.yaml`: the API contract (source of truth for request/response shapes).
+- `internal/api/oapi`: types and strict server interface generated from the spec (`oapi.gen.go`).
 - `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.
 - `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
@@ -58,3 +61,5 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - Wrap errors with context (`fmt.Errorf("doing x: %w", err)`); no panics outside `main`.
 - No mutable package-level state; dependencies are passed in explicitly.
 - Table-driven tests; every bug fix comes with a test that reproduces it.
+- Never edit `*.gen.go` by hand: change the source (spec, SQL) and run `make generate`. Generated code is
+  committed; CI fails if it is stale.

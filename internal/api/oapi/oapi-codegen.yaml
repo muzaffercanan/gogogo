@@ -1,0 +1,10 @@
+# oapi-codegen configuration. Regenerate with `make generate`.
+package: oapi
+output: oapi.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+output-options:
+  # Health and metrics are served by internal/platform/ops, not by the generated router.
+  exclude-tags: [operations]

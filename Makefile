@@ -36,6 +36,10 @@ test: ## Run unit tests
 test-race: ## Run unit tests with the race detector inside a Linux container
 	docker run --rm -v "$(CURDIR)":/src -v gogogo-gomod:/go/pkg/mod -w /src $(GO_IMAGE) go test -race -count=1 ./...
 
+.PHONY: generate
+generate: ## Regenerate code from api/openapi.yaml
+	go generate ./...
+
 .PHONY: lint
 lint: ## Run golangci-lint
 	golangci-lint run ./...

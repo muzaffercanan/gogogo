@@ -13,3 +13,6 @@
 *.jpeg binary
 *.gif binary
 *.ico binary
+
+# Generated code: collapsed in diffs on GitHub
+*.gen.go linguist-generated=true
