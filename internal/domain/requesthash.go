@@ -23,7 +23,7 @@ type canonicalRequest struct {
 func (r NotificationRequest) canonical() canonicalRequest {
 	c := canonicalRequest{Channel: r.Channel, Recipient: r.Recipient, Content: r.Content, Priority: r.Priority}
 	if c.Priority == "" {
-		c.Priority = PriorityNormal
+		c.Priority = DefaultPriority
 	}
 	if r.ScheduledAt != nil {
 		c.ScheduledAt = r.ScheduledAt.UTC().Format(time.RFC3339Nano)

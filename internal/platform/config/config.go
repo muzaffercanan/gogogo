@@ -19,6 +19,9 @@ type Common struct {
 type API struct {
 	Common
 	DatabaseURL string `env:"DATABASE_URL,required"`
+	// MaxAttempts is the number of delivery attempts a new notification gets before it is marked
+	// permanently_failed.
+	MaxAttempts int `env:"MAX_ATTEMPTS" envDefault:"5"`
 }
 
 // Relay configures the outbox relay process.

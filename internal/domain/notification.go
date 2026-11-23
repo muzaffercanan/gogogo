@@ -27,6 +27,9 @@ const (
 	PriorityLow    Priority = "low"
 )
 
+// DefaultPriority is the priority of a notification whose request did not choose one.
+const DefaultPriority = PriorityNormal
+
 // Status is the delivery status of a notification.
 type Status string
 

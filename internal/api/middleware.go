@@ -80,22 +80,25 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rec := wrap(w)
-			defer func() {
-				v := recover()
-				if v == nil {
-					return
-				}
-				if err, ok := v.(error); ok && errors.Is(err, http.ErrAbortHandler) {
-					panic(v)
-				}
-				logger.ErrorContext(r.Context(), "handler panicked",
-					"method", r.Method, "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
-				if !rec.wroteHeader {
-					WriteProblem(rec, r, ProblemFor(errors.New("panic")))
-				}
-			}()
+			defer answerPanic(logger, rec, r)
 			next.ServeHTTP(rec, r)
 		})
+	}
+}
+
+// answerPanic is deferred by Recover; recover only works in the deferred function itself.
+func answerPanic(logger *slog.Logger, rec *recorder, r *http.Request) {
+	v := recover()
+	if v == nil {
+		return
+	}
+	if err, ok := v.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+		panic(v)
+	}
+	logger.ErrorContext(r.Context(), "handler panicked",
+		"method", r.Method, "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
+	if !rec.wroteHeader {
+		WriteProblem(rec, r, ProblemFor(errors.New("panic")))
 	}
 }
 

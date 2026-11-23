@@ -54,7 +54,10 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 
 - `cmd/{api,relay,worker,mockprovider}`: entrypoints, all built into one image (`Dockerfile`).
 - `api/openapi.yaml`: the API contract (source of truth for request/response shapes).
+- `internal/api`: handlers of the generated strict server, middleware and the problem+json mapping.
 - `internal/api/oapi`: types and strict server interface generated from the spec (`oapi.gen.go`).
+- `internal/service`: use cases on domain types (validation, idempotency, cancellation); no HTTP.
+- `internal/domain`: notification model, state machine, validation rules, SMS encoding, error types.
 - `internal/repository/queries`: SQL queries; `sqlc` (config `sqlc.yaml`) generates
   `internal/repository/sqlc` from them and the migrations.
 - `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.

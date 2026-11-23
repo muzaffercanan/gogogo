@@ -7,14 +7,18 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/muzaffercanan/gogogo/internal/api"
 	"github.com/muzaffercanan/gogogo/internal/platform/config"
 	"github.com/muzaffercanan/gogogo/internal/platform/health"
 	"github.com/muzaffercanan/gogogo/internal/platform/httpserver"
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/platform/ops"
+	"github.com/muzaffercanan/gogogo/internal/repository"
+	"github.com/muzaffercanan/gogogo/internal/service"
 )
 
 func main() {
@@ -40,8 +44,14 @@ func run() error {
 	}
 	defer db.Close()
 
+	svc, err := service.New(repository.New(db), cfg.MaxAttempts, time.Now)
+	if err != nil {
+		return err
+	}
+
 	reg := ops.NewRegistry()
 	mux := ops.NewMux(log, reg, map[string]health.Check{"postgres": db.Ping})
+	mux.Handle("/", api.NewHandler(svc, log, reg))
 
 	return httpserver.Run(ctx, log, cfg.HTTPAddr, mux, cfg.ShutdownTimeout)
 }
