@@ -208,6 +208,63 @@ func TestDispatchOutboxSkipsLockedRowsAndHonorsLimit(t *testing.T) {
 	}
 }
 
+func TestListenOutboxSignalsOnReadyAndNotifyAndDestroysSession(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+
+	cfg := db.Config().Copy()
+	cfg.MaxConns = 1
+	singlePool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("NewWithConfig: %v", err)
+	}
+	t.Cleanup(singlePool.Close)
+
+	listenCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	wakes := make(chan struct{}, 4)
+	done := make(chan error, 1)
+	go func() {
+		done <- repository.New(singlePool).ListenOutbox(listenCtx, func() {
+			wakes <- struct{}{}
+		})
+	}()
+
+	// Initial wakeup right after LISTEN outbox succeeds.
+	select {
+	case <-wakes:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the initial ListenOutbox wakeup")
+	}
+
+	if _, _, err := repository.New(db).CreateNotification(ctx, newNotification(t, nil)); err != nil {
+		t.Fatalf("CreateNotification: %v", err)
+	}
+	select {
+	case <-wakes:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for ListenOutbox wakeup after CreateNotification")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("ListenOutbox after cancel = %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ListenOutbox did not return after its context was cancelled")
+	}
+
+	var channels int
+	if err := singlePool.QueryRow(ctx, `SELECT count(*) FROM pg_listening_channels()`).Scan(&channels); err != nil {
+		t.Fatalf("checking listening channels: %v", err)
+	}
+	if channels != 0 {
+		t.Errorf("pooled connection still listens on %d channel(s), want 0", channels)
+	}
+}
+
 func createWithAvailableAt(
 	ctx context.Context,
 	t *testing.T,

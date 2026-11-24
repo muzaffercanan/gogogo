@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -112,4 +113,35 @@ func (s *Store) DispatchOutbox(ctx context.Context, limit int, publish func(cont
 		return 0, 0, fmt.Errorf("dispatching outbox: %w", err)
 	}
 	return claimed, published, nil
+}
+
+// ListenOutbox acquires a dedicated connection, subscribes to the PostgreSQL "outbox" channel with
+// LISTEN, calls onWake once ready (so rows committed before LISTEN took effect are not missed) and
+// then calls onWake whenever a notification arrives, until ctx ends or the connection fails.
+//
+// The underlying connection is closed before it is released back to the pool so a session that ran
+// LISTEN is never reused for ordinary queries.
+func (s *Store) ListenOutbox(ctx context.Context, onWake func()) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquiring listen connection: %w", err)
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = conn.Conn().Close(closeCtx)
+		conn.Release()
+	}()
+
+	if _, err := conn.Exec(ctx, "LISTEN outbox"); err != nil {
+		return fmt.Errorf("listening on outbox channel: %w", err)
+	}
+	onWake()
+
+	for {
+		if _, err := conn.Conn().WaitForNotification(ctx); err != nil {
+			return fmt.Errorf("waiting for outbox notification: %w", err)
+		}
+		onWake()
+	}
 }

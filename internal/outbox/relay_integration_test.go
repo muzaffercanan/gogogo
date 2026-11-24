@@ -212,6 +212,86 @@ func TestRelayRunDrainsMultiBatchBacklogAndRecoversFromOutage(t *testing.T) {
 	assertEmpty(t, ch, qName)
 }
 
+func TestRelayRunWakesOnNotifyWithoutWaitingForPoll(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	pub, vhost := connectedPublisher(t)
+	relay := outbox.NewRelay(store, pub, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	// A 30 s poll interval guarantees only LISTEN/NOTIFY can wake the relay within receive's 5 s timeout.
+	outbox.SetTiming(relay, 100, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
+
+	firstID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		relay.Run(runCtx)
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("relay Run did not return after its context was cancelled")
+		}
+	}()
+
+	ch := openChannel(t, dial(t, vhost))
+	qName := queue.QueueName(domain.ChannelSMS, domain.PriorityHigh)
+	if d := receive(t, ch, qName); d.MessageId != firstID.String() {
+		t.Fatalf("first message id = %q, want %q", d.MessageId, firstID)
+	}
+
+	// Ensure the listener session is active in PostgreSQL before committing the second notification.
+	waitFor(t, "the relay listener is active", func() bool {
+		var count int
+		_ = db.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE query = 'LISTEN outbox'`).Scan(&count)
+		return count > 0
+	})
+
+	secondID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
+	if d := receive(t, ch, qName); d.MessageId != secondID.String() {
+		t.Errorf("second message id = %q, want %q", d.MessageId, secondID)
+	}
+}
+
+func TestRelayRunPollingFallbackDispatchesScheduledRowWhenDue(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	pub, vhost := connectedPublisher(t)
+	relay := outbox.NewRelay(store, pub, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	outbox.SetTiming(relay, 100, 50*time.Millisecond, 10*time.Millisecond, 50*time.Millisecond)
+
+	// NOTIFY fires at creation while available_at is still in the future; no new NOTIFY fires when the
+	// scheduled time arrives, so only the polling fallback can pick the row up once it becomes due.
+	dueAt := time.Now().UTC().Add(250 * time.Millisecond).Truncate(time.Microsecond)
+	id := createNotification(ctx, t, store, domain.ChannelPush, domain.PriorityHigh, &dueAt)
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		relay.Run(runCtx)
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("relay Run did not return after its context was cancelled")
+		}
+	}()
+
+	ch := openChannel(t, dial(t, vhost))
+	qName := queue.QueueName(domain.ChannelPush, domain.PriorityHigh)
+	if d := receive(t, ch, qName); d.MessageId != id.String() {
+		t.Errorf("received message id = %q, want %q", d.MessageId, id)
+	}
+}
+
 func createNotification(
 	ctx context.Context,
 	t *testing.T,

@@ -88,9 +88,19 @@ func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 	})
 }
 
-// Run drains due outbox rows until ctx ends. A full batch is followed at once by another step so a
-// backlog drains without waiting for the next poll; a failed step backs off with full jitter.
+// Run drains due outbox rows until ctx ends. It wakes immediately when PostgreSQL delivers a NOTIFY on
+// the outbox channel and falls back to polling every pollInterval (which also picks up scheduled rows
+// and retries whose available_at passes without a new NOTIFY). A full batch is followed at once by
+// another step so a backlog drains without waiting; a failed step backs off with full jitter.
 func (r *Relay) Run(ctx context.Context) {
+	wake := make(chan struct{}, 1)
+	listenDone := make(chan struct{})
+	go func() {
+		defer close(listenDone)
+		r.listen(ctx, wake)
+	}()
+	defer func() { <-listenDone }()
+
 	failures := 0
 	for {
 		claimed, _, err := r.Once(ctx)
@@ -120,7 +130,38 @@ func (r *Relay) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-wake:
 		case <-time.After(r.pollInterval):
+		}
+	}
+}
+
+// listen keeps a LISTEN outbox session open and signals wake whenever a notification arrives,
+// reconnecting with backoff if the database connection drops.
+func (r *Relay) listen(ctx context.Context, wake chan<- struct{}) {
+	failures := 0
+	for {
+		connected := false
+		err := r.store.ListenOutbox(ctx, func() {
+			connected = true
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		})
+		if ctx.Err() != nil {
+			return
+		}
+		if connected {
+			failures = 0
+		}
+		delay := r.backoff(failures)
+		failures++
+		r.log.Warn("outbox listener stopped", "attempt", failures, "retry_in_ms", delay.Milliseconds(), "error", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
 		}
 	}
 }
