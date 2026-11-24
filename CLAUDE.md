@@ -8,7 +8,10 @@ Event-driven notification service written in Go. It accepts notification request
 queues them, and delivers them through SMS, Email and Push providers with rate limiting,
 priorities, retries and status tracking.
 
-Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as they are made.
+Status: feature-complete for the core flow (create, batch, schedule, cancel, list, delivery with rate
+limiting, priorities, retries, dead-lettering, metrics and tracing). Live status over WebSocket (ADR 0010)
+and templates are not built yet. `README.md` is the user-facing overview; architecture decisions are in
+`docs/adr/`.
 
 ## Ground rules
 
@@ -19,7 +22,8 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 - Small, focused commits using Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`,
   `docs:`, `chore:`, `ci:`, `build:`).
 - Never commit secrets or real provider endpoints. Use `.env` (gitignored) and keep
-  `.env.example` up to date with placeholders.
+  `.env.example` up to date with placeholders. Every variable it documents must also be passed to its
+  service in `docker-compose.yml` (a unit test in `internal/platform/config` checks this).
 - Do not push without explicit approval from the maintainer.
 
 ## Environment notes
@@ -48,7 +52,7 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 | Build binaries | `make build` → `./bin` |
 | Regenerate code after changing `api/openapi.yaml`, SQL queries or migrations | `make generate` (oapi-codegen + sqlc; sqlc runs in Docker) |
 
-Ports: api 8080, relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest),
+Ports: api 8080 (Swagger UI at `/docs`, the spec at `/openapi.yaml`), relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest),
 Jaeger UI 16686 (OTLP/HTTP on 4318), Prometheus 9091, Grafana 3000 (localhost only, no login; the
 `Notifications` dashboard is its home page).
 Every process serves `/health/live`, `/health/ready` and `/metrics`.
