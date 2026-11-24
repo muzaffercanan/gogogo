@@ -76,6 +76,8 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
   exponential backoff with full jitter, tracing (OpenTelemetry over OTLP/HTTP, configured by the
   standard `OTEL_*` variables).
 - `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
+- `internal/e2e`: end-to-end tests: the api, relay and workers assembled in the test process against
+  containers, driven through the HTTP API with a scripted provider.
 - `internal/testutil/pgtest`: PostgreSQL container for integration tests; one migrated database per test.
 - `internal/testutil/rabbittest`: RabbitMQ container for integration tests; one virtual host per test.
 - `internal/testutil/redistest`: Redis container for integration tests; one logical database per test.
