@@ -23,10 +23,10 @@ const (
 	limiterMaxBackoff = 5 * time.Second
 )
 
-// Dispatcher delivers the notifications of one channel. It picks the next delivery (K-36), waits until
-// the circuit breaker lets it through (K-42), then for a free sender, then for a rate-limit token, and
+// Dispatcher delivers the notifications of one channel. It picks the next delivery (ADR 0002), waits until
+// the circuit breaker lets it through (ADR 0009), then for a free sender, then for a rate-limit token, and
 // hands the delivery to that sender; taking the sender first means a send starts as soon as its token
-// is granted (K-39). While the breaker is open it picks nothing more: the deliveries buffered so far
+// is granted (ADR 0015). While the breaker is open it picks nothing more: the deliveries buffered so far
 // stay unacknowledged with the worker.
 type Dispatcher struct {
 	channel   domain.Channel
@@ -134,9 +134,9 @@ func (dp *Dispatcher) token(ctx context.Context) bool {
 
 // Options tunes the worker of one channel.
 type Options struct {
-	// Prefetch is how many messages of each work queue the consumer holds (K-35).
+	// Prefetch is how many messages of each work queue the consumer holds.
 	Prefetch int
-	// Concurrency is how many sends run at once (K-39).
+	// Concurrency is how many sends run at once (ADR 0015).
 	Concurrency int
 	// Weights are the priorities' shares (ADR 0002).
 	Weights Weights

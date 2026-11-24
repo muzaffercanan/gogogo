@@ -12,7 +12,7 @@ import (
 	"github.com/muzaffercanan/gogogo/internal/domain"
 )
 
-// BreakerSettings tune a channel's circuit breaker (ADR 0009, K-42).
+// BreakerSettings tune a channel's circuit breaker (ADR 0009).
 type BreakerSettings struct {
 	// Window is how far back the breaker counts deliveries, in a rolling window of ten buckets.
 	Window time.Duration
@@ -58,7 +58,7 @@ func verdict(o Outcome) error {
 	}
 }
 
-// breaker guards the sends of one channel. While it is open the dispatcher picks nothing (K-42).
+// breaker guards the sends of one channel. While it is open the dispatcher picks nothing.
 type breaker struct {
 	cb  *gobreaker.TwoStepCircuitBreaker[struct{}]
 	log *slog.Logger

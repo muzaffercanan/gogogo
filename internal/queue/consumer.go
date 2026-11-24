@@ -65,7 +65,7 @@ func settled(action, id string, err error) error {
 	}
 }
 
-// Consumer reconnect backoff (K-35): after a lost channel or a failed attempt, the consumer waits
+// Consumer reconnect backoff: after a lost channel or a failed attempt, the consumer waits
 // rand(0, min(5 s, 100 ms·2^failures)) before opening a channel again.
 const (
 	consumerMinBackoff = 100 * time.Millisecond

@@ -44,7 +44,7 @@ type Accepted struct {
 	// body that was not the expected JSON (Malformed).
 	MessageID string
 	// Malformed reports a 2xx answer whose body could not be read as {"messageId": ...}. The message
-	// counts as sent: the provider accepted it, and sending it again could deliver it twice (K-38).
+	// counts as sent: the provider accepted it, and sending it again could deliver it twice (ADR 0014).
 	Malformed bool
 	// StatusCode is the provider's 2xx status.
 	StatusCode int

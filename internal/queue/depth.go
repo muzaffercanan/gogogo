@@ -16,8 +16,8 @@ const depthTimeout = 2 * time.Second
 const dlqLabel = "dlq"
 
 // DepthCollector reports queue_depth{channel,queue} by asking the broker, each time Prometheus scrapes,
-// how many messages wait in every work queue (queue=high|normal|low) and dead-letter queue (queue=dlq)
-// (K-43). Create it with NewDepthCollector and register it with the process registry.
+// how many messages wait in every work queue (queue=high|normal|low) and dead-letter queue (queue=dlq).
+// Create it with NewDepthCollector and register it with the process registry.
 type DepthCollector struct {
 	sup     *Supervisor
 	log     *slog.Logger

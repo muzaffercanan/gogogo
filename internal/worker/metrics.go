@@ -57,7 +57,7 @@ type Metrics struct {
 	stopped map[domain.Channel]*atomic.Bool // fixed at construction: one per channel
 }
 
-// NewMetrics registers the worker's metrics with reg (K-43):
+// NewMetrics registers the worker's metrics with reg:
 //   - notifications_sent_total{channel}
 //   - notifications_failed_total{channel, final}
 //   - retries_total{channel, reason}

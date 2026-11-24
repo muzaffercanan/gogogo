@@ -171,7 +171,7 @@ func TestSupervisorConnectsAndDeclaresTheTopology(t *testing.T) {
 	}
 }
 
-// The broker being down when the process starts must not be fatal (AI-07).
+// The broker being down when the process starts must not be fatal.
 func TestSupervisorWaitsForABrokerThatIsDownAtStart(t *testing.T) {
 	p, url := newProxy(t, mq.NewVHost(t), false)
 	s, _, _ := supervise(t, url)

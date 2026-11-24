@@ -40,7 +40,7 @@ type Source interface {
 }
 
 // Picker decides which delivery of a channel goes next, with a work-conserving smooth weighted
-// round-robin over the priorities (ADR 0002, K-36). Each pick adds every ready priority's weight to its
+// round-robin over the priorities (ADR 0002). Each pick adds every ready priority's weight to its
 // current value, takes the priority with the highest value (the higher priority on a tie) and subtracts
 // the ready priorities' total weight from it. A priority is ready while the picker holds one of its
 // deliveries; one whose buffer is empty sits out with its value kept, and the others share its turns.

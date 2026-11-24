@@ -20,7 +20,7 @@ var ErrUnavailable = errors.New("rate limiter unavailable")
 // keyPrefix names the Redis key that holds a channel's theoretical arrival time, e.g. ratelimit:sms.
 const keyPrefix = "ratelimit:"
 
-// reserve hands out the next send slot of a channel (K-37). The key holds the theoretical arrival time
+// reserve hands out the next send slot of a channel (ADR 0003). The key holds the theoretical arrival time
 // (TAT): the earliest time, in microseconds of the Redis clock, at which the next send may start. A slot
 // is max(TAT, now); the TAT then moves one emission interval past it. Taking the maximum with now means
 // idle time is never banked, so sends are never closer than the interval (burst 1). The script returns
