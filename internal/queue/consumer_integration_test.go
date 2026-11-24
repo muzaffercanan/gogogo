@@ -246,23 +246,31 @@ func TestConsumerReopensItsChannelAfterTheBrokerClosesIt(t *testing.T) {
 		t.Fatalf("acknowledging a: %v", err)
 	}
 	// Acknowledging the same delivery twice is a channel error: the broker closes the channel
-	// (PRECONDITION_FAILED, unknown delivery tag) and keeps the connection. The close arrives
-	// asynchronously, and until it does the client still sends on the channel, so wait for it before
-	// publishing b; otherwise b could arrive and be "acknowledged" on the closing channel without the
-	// consumer ever opening a new one.
+	// (PRECONDITION_FAILED, unknown delivery tag). The close arrives asynchronously, and until it does
+	// the client still sends on the channel, so wait for it before publishing b; otherwise b could
+	// arrive and be "acknowledged" on the closing channel without the consumer ever opening a new one.
 	_ = d.Ack()
 	waitFor(t, "the broker closes the channel", func() bool { return errors.Is(d.Ack(), queue.ErrChannelClosed) })
 
+	// From here on b can only be consumed on a channel the consumer opened after the error. Usually
+	// that is a new channel on the same connection. But the broker may still deliver b on the channel
+	// it is closing, and amqp091-go closes the whole connection when a message arrives on a channel it
+	// has already closed; b then comes again, marked redelivered, once the supervisor has reconnected.
+	// Either way the consumer must pick up again.
 	send(t, ch, domain.ChannelSMS, domain.PriorityNormal, "b", "")
-	got := next(t, c, domain.PriorityNormal)
-	if got.NotificationID != "b" || got.Redelivered {
-		t.Errorf("got %s (redelivered %t), want a first delivery of b", got.NotificationID, got.Redelivered)
-	}
-	if err := got.Ack(); err != nil {
-		t.Errorf("acknowledging b: %v", err)
-	}
-	if err := s.Check(t.Context()); err != nil {
-		t.Errorf("the connection did not survive the channel error: %v", err)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		got := next(t, c, domain.PriorityNormal)
+		if got.NotificationID != "b" {
+			t.Fatalf("got %s, want b", got.NotificationID)
+		}
+		err := got.Ack()
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, queue.ErrChannelClosed) || time.Now().After(deadline) {
+			t.Fatalf("acknowledging b: %v", err)
+		}
 	}
 }
 
