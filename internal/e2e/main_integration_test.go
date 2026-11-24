@@ -160,6 +160,12 @@ type workerConfig struct {
 	opts        worker.Options
 }
 
+// oneAtATime makes a worker take the messages of a queue strictly in order: one held, one sent at a
+// time.
+func oneAtATime() worker.Options {
+	return worker.Options{Prefetch: 1, Concurrency: 1, Weights: worker.DefaultWeights()}
+}
+
 // startWorker starts a worker process: every channel, with a broker connection of its own and the
 // system's Redis database. It runs until the returned stop is called or the test ends; stop asks the
 // worker to stop and returns at once (sends in flight finish in the background).
@@ -215,21 +221,24 @@ func (s *system) startWorker(cfg workerConfig) (stop func()) {
 	return cancel
 }
 
-// request sends method path with body (JSON-encoded unless nil) and headers, and decodes the JSON
-// answer into out unless out is nil. It returns the status code.
+// request sends method path with body (JSON-encoded unless nil) and headers, and decodes a successful
+// JSON answer into out unless out is nil. It returns the status code. It may run on any goroutine: it
+// reports a failure with Errorf and returns 0.
 func (s *system) request(method, path string, body any, headers map[string]string, out any) int {
 	s.t.Helper()
 	var r io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			s.t.Fatal(err)
+			s.t.Errorf("%s %s: encoding the body: %v", method, path, err)
+			return 0
 		}
 		r = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(s.t.Context(), method, s.api.URL+path, r)
 	if err != nil {
-		s.t.Fatal(err)
+		s.t.Errorf("%s %s: %v", method, path, err)
+		return 0
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -239,16 +248,19 @@ func (s *system) request(method, path string, body any, headers map[string]strin
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		s.t.Fatalf("%s %s: %v", method, path, err)
+		s.t.Errorf("%s %s: %v", method, path, err)
+		return 0
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.t.Fatalf("%s %s: reading the answer: %v", method, path, err)
+		s.t.Errorf("%s %s: reading the answer: %v", method, path, err)
+		return 0
 	}
-	if out != nil && len(raw) > 0 {
+	if out != nil && resp.StatusCode/100 == 2 && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
-			s.t.Fatalf("%s %s: decoding %s: %v", method, path, raw, err)
+			s.t.Errorf("%s %s: decoding %s: %v", method, path, raw, err)
+			return 0
 		}
 	}
 	return resp.StatusCode
