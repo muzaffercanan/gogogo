@@ -158,6 +158,8 @@ type workerConfig struct {
 	// providerURL is where the worker sends; the system's provider if empty.
 	providerURL string
 	opts        worker.Options
+	// wrapLimiter, if set, stands between the worker and its rate limiter.
+	wrapLimiter func(worker.Limiter) worker.Limiter
 }
 
 // oneAtATime makes a worker take the messages of a queue strictly in order: one held, one sent at a
@@ -194,9 +196,13 @@ func (s *system) startWorker(cfg workerConfig) (stop func()) {
 	}
 	client := redis.NewClient(opts)
 	s.t.Cleanup(func() { _ = client.Close() })
-	limiter, err := ratelimit.New(client, cfg.rate)
+	rl, err := ratelimit.New(client, cfg.rate)
 	if err != nil {
 		s.t.Fatal(err)
+	}
+	var limiter worker.Limiter = rl
+	if cfg.wrapLimiter != nil {
+		limiter = cfg.wrapLimiter(limiter)
 	}
 	sender, err := provider.NewClient(cfg.providerURL, 10*time.Second, tp)
 	if err != nil {
@@ -405,6 +411,7 @@ type answer struct {
 // providerRequest is a request the provider received.
 type providerRequest struct {
 	at      time.Time
+	path    string
 	key     string // Idempotency-Key
 	to      string
 	channel string
@@ -432,7 +439,7 @@ func newScriptedProvider(t *testing.T) *scriptedProvider {
 		}
 		key := r.Header.Get("Idempotency-Key")
 		p.mu.Lock()
-		p.requests = append(p.requests, providerRequest{at: time.Now(), key: key, to: body.To, channel: body.Channel, content: body.Content})
+		p.requests = append(p.requests, providerRequest{at: time.Now(), path: r.URL.Path, key: key, to: body.To, channel: body.Channel, content: body.Content})
 		seq := 0 // this request's place among those carrying key, from 1
 		for _, req := range p.requests {
 			if req.key == key {
@@ -468,6 +475,19 @@ func (p *scriptedProvider) script(recipient string, answers ...answer) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.scripts[recipient] = answers
+}
+
+// receivedOn returns the requests so far to path, in the order they arrived.
+func (p *scriptedProvider) receivedOn(path string) []providerRequest {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []providerRequest
+	for _, r := range p.requests {
+		if r.path == path {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // received returns the requests so far whose Idempotency-Key is key, or all of them if key is empty.
