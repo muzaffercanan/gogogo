@@ -364,6 +364,25 @@ func (s *system) deadLettered(channel domain.Channel, want int) []string {
 	return ids
 }
 
+// queueDepth returns how many messages wait in queue name.
+func (s *system) queueDepth(t *testing.T, name string) int {
+	t.Helper()
+	conn, err := amqp.Dial(s.vhost)
+	if err != nil {
+		t.Fatalf("connecting to the broker: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ch, err := conn.Channel()
+	if err != nil {
+		t.Fatalf("opening a channel: %v", err)
+	}
+	q, err := ch.QueueDeclarePassive(name, true, false, false, false, nil)
+	if err != nil {
+		t.Fatalf("inspecting %s: %v", name, err)
+	}
+	return q.Messages
+}
+
 // waitFor polls cond every 20 ms until it holds, failing the test after timeout.
 func waitFor(t *testing.T, timeout time.Duration, what string, cond func() bool) {
 	t.Helper()
@@ -393,7 +412,8 @@ type providerRequest struct {
 }
 
 // scriptedProvider answers each recipient's requests in turn from that recipient's script, and accepts
-// every request beyond it (and every request of a recipient without one).
+// every request beyond it (and every request of a recipient without one). It accepts a request with
+// message id msg-<Idempotency-Key>-<n>, the request being the nth to arrive with that key.
 type scriptedProvider struct {
 	mu       sync.Mutex
 	scripts  map[string][]answer
@@ -410,8 +430,15 @@ func newScriptedProvider(t *testing.T) *scriptedProvider {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		key := r.Header.Get("Idempotency-Key")
 		p.mu.Lock()
-		p.requests = append(p.requests, providerRequest{at: time.Now(), key: r.Header.Get("Idempotency-Key"), to: body.To, channel: body.Channel, content: body.Content})
+		p.requests = append(p.requests, providerRequest{at: time.Now(), key: key, to: body.To, channel: body.Channel, content: body.Content})
+		seq := 0 // this request's place among those carrying key, from 1
+		for _, req := range p.requests {
+			if req.key == key {
+				seq++
+			}
+		}
 		a := answer{status: http.StatusAccepted}
 		if script := p.scripts[body.To]; len(script) > 0 {
 			a, p.scripts[body.To] = script[0], script[1:]
@@ -430,8 +457,7 @@ func newScriptedProvider(t *testing.T) *scriptedProvider {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = fmt.Fprintf(w, `{"messageId":"msg-%s-%d","status":"accepted","timestamp":%q}`,
-			r.Header.Get("Idempotency-Key"), p.count(r.Header.Get("Idempotency-Key")), time.Now().UTC().Format(time.RFC3339))
+		_, _ = fmt.Fprintf(w, `{"messageId":"msg-%s-%d","status":"accepted","timestamp":%q}`, key, seq, time.Now().UTC().Format(time.RFC3339))
 	}))
 	t.Cleanup(p.srv.Close)
 	return p
@@ -456,6 +482,3 @@ func (p *scriptedProvider) received(key string) []providerRequest {
 	}
 	return out
 }
-
-// count returns how many requests carried key so far.
-func (p *scriptedProvider) count(key string) int { return len(p.received(key)) }
