@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
+	"github.com/muzaffercanan/gogogo/internal/testutil/redisclock"
 	"github.com/muzaffercanan/gogogo/internal/testutil/redistest"
 )
 
@@ -47,7 +48,7 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 	ctx, cancel := context.WithTimeout(context.Background(), run)
 	defer cancel()
 	origin := time.Now()
-	clock := watchRedisClock(ctx, t, url)
+	clock := redisclock.Watch(ctx, t, url)
 	for range instances {
 		opts, err := redis.ParseURL(url)
 		if err != nil {
@@ -84,7 +85,7 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 	defer func() {
 		// The rates above summarise the clock; when they do not explain the sends, the details might.
 		if t.Failed() {
-			t.Logf("Redis clock: %s", clockSummary(origin, readings))
+			t.Logf("Redis clock: %s", redisclock.Summary(origin, readings))
 			t.Logf("sends per 250 ms from the start: %v", perQuarterSecond(origin, starts, run))
 		}
 	}()
@@ -129,45 +130,6 @@ func perQuarterSecond(origin time.Time, starts []time.Time, run time.Duration) [
 		}
 	}
 	return counts
-}
-
-// watchRedisClock reads the clock of the Redis server at url every 20 ms until ctx ends. The returned
-// function waits for that and reports how fast the clock ran against the host's (see clockRates), with
-// the readings.
-func watchRedisClock(ctx context.Context, t *testing.T, url string) func() (fastest, reached float64, readings []clockReading) {
-	t.Helper()
-	opts, err := redis.ParseURL(url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := redis.NewClient(opts)
-	t.Cleanup(func() { _ = client.Close() })
-	var readings []clockReading
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			before := time.Now()
-			now, err := client.Time(ctx).Result()
-			after := time.Now()
-			if err == nil {
-				readings = append(readings, clockReading{before: before, after: after, redis: now})
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(20 * time.Millisecond):
-			}
-		}
-	}()
-	return func() (float64, float64, []clockReading) {
-		<-done
-		fastest, reached, ok := clockRates(readings)
-		if !ok {
-			t.Fatalf("could not tell how fast the Redis clock ran from %d readings", len(readings))
-		}
-		return fastest, reached, readings
-	}
 }
 
 func TestScriptRunsOnRedisWithTheSameResultsAsOnMiniredis(t *testing.T) {

@@ -81,6 +81,9 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `internal/testutil/pgtest`: PostgreSQL container for integration tests; one migrated database per test.
 - `internal/testutil/rabbittest`: RabbitMQ container for integration tests; one virtual host per test.
 - `internal/testutil/redistest`: Redis container for integration tests; one logical database per test.
+- `internal/testutil/redisclock`: reads a Redis server's clock while a test runs and reports how fast it
+  ran against the host's (Docker Desktop's VM clock drifts and steps), for tests that compare Redis
+  times with host times.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
 - `deploy/prometheus`, `deploy/grafana`: Prometheus scrape config, Grafana datasource and dashboard
   provisioning for the Compose stack. Update the dashboard JSON when a metric is renamed; Grafana loads
