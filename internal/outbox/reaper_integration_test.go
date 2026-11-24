@@ -150,7 +150,7 @@ func createStuckSending(
 	age time.Duration,
 ) uuid.UUID {
 	t.Helper()
-	id := createNotification(ctx, t, store, channel, priority, nil)
+	id := createNotification(ctx, t, store, db, channel, priority, nil)
 	if _, err := db.Exec(ctx, `DELETE FROM outbox WHERE notification_id = $1`, id); err != nil {
 		t.Fatalf("deleting initial outbox row: %v", err)
 	}

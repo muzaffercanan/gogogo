@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -29,7 +30,7 @@ import (
 // apiTraceParent is the span of the API request that created a notification.
 const apiTraceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 
-func createTraced(ctx context.Context, t *testing.T, store *repository.Store, c domain.Channel, p domain.Priority, traceparent string) uuid.UUID {
+func createTraced(ctx context.Context, t *testing.T, store *repository.Store, db *pgxpool.Pool, c domain.Channel, p domain.Priority, traceparent string) uuid.UUID {
 	t.Helper()
 	id := uuid.Must(uuid.NewV7())
 	if _, _, err := store.CreateNotification(ctx, domain.NewNotification{
@@ -37,6 +38,7 @@ func createTraced(ctx context.Context, t *testing.T, store *repository.Store, c 
 	}); err != nil {
 		t.Fatalf("CreateNotification: %v", err)
 	}
+	makeDue(ctx, t, db, id)
 	return id
 }
 
@@ -59,14 +61,15 @@ func traceParentOf(sc trace.SpanContext) string {
 
 func TestRelayPublishesEachNotificationInItsTrace(t *testing.T) {
 	ctx := context.Background()
-	store := repository.New(pg.NewDatabase(t))
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
 	spans := tracetest.NewSpanRecorder()
 	var logs bytes.Buffer
 	relay := outbox.NewRelay(store, pub, discardMetrics(), sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)), logging.New(io.MultiWriter(t.Output(), &logs), "info"))
 
-	traced := createTraced(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, apiTraceParent)
-	untraced := createTraced(ctx, t, store, domain.ChannelEmail, domain.PriorityLow, "")
+	traced := createTraced(ctx, t, store, db, domain.ChannelSMS, domain.PriorityHigh, apiTraceParent)
+	untraced := createTraced(ctx, t, store, db, domain.ChannelEmail, domain.PriorityLow, "")
 	if _, _, err := relay.Once(ctx); err != nil {
 		t.Fatalf("Once: %v", err)
 	}
@@ -131,12 +134,13 @@ func queuedRecord(t *testing.T, logs string, id uuid.UUID) logRecord {
 
 func TestRelayFailsThePublishSpansOfAStepThatRolledBack(t *testing.T) {
 	ctx := context.Background()
-	store := repository.New(pg.NewDatabase(t))
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
 	spans := tracetest.NewSpanRecorder()
 	relay := outbox.NewRelay(store, pub, discardMetrics(), sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)), slog.New(slog.NewTextHandler(t.Output(), nil)))
 
-	id := createTraced(ctx, t, store, domain.ChannelEmail, domain.PriorityNormal, apiTraceParent)
+	id := createTraced(ctx, t, store, db, domain.ChannelEmail, domain.PriorityNormal, apiTraceParent)
 	key := queue.QueueName(domain.ChannelEmail, domain.PriorityNormal)
 	if _, err := openChannel(t, dial(t, vhost)).QueueDelete(key, false, false, false); err != nil {
 		t.Fatalf("deleting %s: %v", key, err)

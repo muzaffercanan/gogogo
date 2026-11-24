@@ -296,6 +296,9 @@ func TestTransitionNotificationRefusesWhatAConcurrentTransactionMovedAway(t *tes
 }
 
 // createInStatus stores a notification and forces it into status, as if earlier transitions had happened.
+// Its outbox row is moved a minute into the past: a row written with available_at = now() is due at
+// once, but a test that claims it right after cannot rely on that, because on Docker Desktop the
+// database clock is set back by up to a second every half minute or so.
 func createInStatus(ctx context.Context, t *testing.T, store *repository.Store, db *pgxpool.Pool, status domain.Status) uuid.UUID {
 	t.Helper()
 	n, _, err := store.CreateNotification(ctx, newNotification(t, nil))
@@ -307,6 +310,9 @@ func createInStatus(ctx context.Context, t *testing.T, store *repository.Store, 
 		WHERE id = $1`, n.ID, string(status))
 	if err != nil {
 		t.Fatalf("forcing status %s: %v", status, err)
+	}
+	if _, err := db.Exec(ctx, `UPDATE outbox SET available_at = now() - interval '1 minute' WHERE notification_id = $1`, n.ID); err != nil {
+		t.Fatalf("making the outbox row due: %v", err)
 	}
 	return n.ID
 }

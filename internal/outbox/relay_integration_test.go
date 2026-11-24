@@ -32,19 +32,19 @@ func TestRelayOncePublishesDueNotificationsToTheirWorkQueues(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 
-	pendingID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
-	retryID := createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityLow, nil)
+	pendingID := createNotification(ctx, t, store, db, domain.ChannelSMS, domain.PriorityHigh, nil)
+	retryID := createNotification(ctx, t, store, db, domain.ChannelEmail, domain.PriorityLow, nil)
 	if _, err := db.Exec(ctx, `UPDATE notifications SET status = $2 WHERE id = $1`, retryID, string(domain.StatusRetryScheduled)); err != nil {
 		t.Fatalf("forcing retry_scheduled: %v", err)
 	}
-	cancelledID := createNotification(ctx, t, store, domain.ChannelPush, domain.PriorityNormal, nil)
+	cancelledID := createNotification(ctx, t, store, db, domain.ChannelPush, domain.PriorityNormal, nil)
 	if _, err := store.TransitionNotification(ctx, repository.Transition{
 		ID: cancelledID, From: domain.AllowedFrom(domain.StatusCancelled), To: domain.StatusCancelled,
 	}); err != nil {
 		t.Fatalf("cancelling notification: %v", err)
 	}
 	future := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
-	scheduledID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityLow, &future)
+	scheduledID := createNotification(ctx, t, store, db, domain.ChannelSMS, domain.PriorityLow, &future)
 
 	claimed, published, err := relay.Once(ctx)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestRelayOnceRollsBackWhenBrokerRejectsPublish(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 
-	id := createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityNormal, nil)
+	id := createNotification(ctx, t, store, db, domain.ChannelEmail, domain.PriorityNormal, nil)
 
 	// Delete the target work queue so the mandatory publish is returned as unroutable.
 	qName := queue.QueueName(domain.ChannelEmail, domain.PriorityNormal)
@@ -212,7 +212,7 @@ func TestRelayRunDrainsMultiBatchBacklogAndRecoversFromOutage(t *testing.T) {
 	const total = 7
 	ids := make([]uuid.UUID, total)
 	for i := range total {
-		ids[i] = createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityNormal, nil)
+		ids[i] = createNotification(ctx, t, store, db, domain.ChannelSMS, domain.PriorityNormal, nil)
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -266,7 +266,7 @@ func TestRelayRunWakesOnNotifyWithoutWaitingForPoll(t *testing.T) {
 	// A 30 s poll interval guarantees only LISTEN/NOTIFY can wake the relay within receive's 5 s timeout.
 	outbox.SetTiming(relay, 100, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
 
-	firstID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
+	firstID := createNotification(ctx, t, store, db, domain.ChannelSMS, domain.PriorityHigh, nil)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -296,7 +296,10 @@ func TestRelayRunWakesOnNotifyWithoutWaitingForPoll(t *testing.T) {
 		return count > 0
 	})
 
-	secondID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
+	// The relay must pick this row up on the NOTIFY of its insert, so it has to be due when inserted:
+	// makeDue would come too late if the database clock stepped back in between.
+	past := databaseNow(ctx, t, db).Add(-time.Minute)
+	secondID := createNotification(ctx, t, store, db, domain.ChannelSMS, domain.PriorityHigh, &past)
 	if d := receive(t, ch, qName); d.MessageId != secondID.String() {
 		t.Errorf("second message id = %q, want %q", d.MessageId, secondID)
 	}
@@ -313,7 +316,7 @@ func TestRelayRunPollingFallbackDispatchesScheduledRowWhenDue(t *testing.T) {
 	// NOTIFY fires at creation while available_at is still in the future; no new NOTIFY fires when the
 	// scheduled time arrives, so only the polling fallback can pick the row up once it becomes due.
 	dueAt := time.Now().UTC().Add(250 * time.Millisecond).Truncate(time.Microsecond)
-	id := createNotification(ctx, t, store, domain.ChannelPush, domain.PriorityHigh, &dueAt)
+	id := createNotification(ctx, t, store, db, domain.ChannelPush, domain.PriorityHigh, &dueAt)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -349,9 +352,9 @@ func TestBacklogCollectorReportsDueAndScheduledOutboxRows(t *testing.T) {
 	reg.MustRegister(outbox.NewBacklogCollector(store, log))
 
 	future := time.Now().UTC().Add(time.Hour)
-	createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
-	createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityLow, nil)
-	createNotification(ctx, t, store, domain.ChannelPush, domain.PriorityNormal, &future)
+	createNotification(ctx, t, store, db, domain.ChannelSMS, domain.PriorityHigh, nil)
+	createNotification(ctx, t, store, db, domain.ChannelEmail, domain.PriorityLow, nil)
+	createNotification(ctx, t, store, db, domain.ChannelPush, domain.PriorityNormal, &future)
 
 	assertBacklog := func(when string, due, scheduled float64) {
 		t.Helper()
@@ -463,10 +466,13 @@ func assertLogEntry(t *testing.T, output, wantMsg, wantNotificationID, wantCorre
 		output, wantMsg, wantNotificationID, wantCorrelationID)
 }
 
+// createNotification stores a notification. Without scheduledAt its outbox row is made due a minute ago
+// (see makeDue).
 func createNotification(
 	ctx context.Context,
 	t *testing.T,
 	store *repository.Store,
+	db *pgxpool.Pool,
 	channel domain.Channel,
 	priority domain.Priority,
 	scheduledAt *time.Time,
@@ -485,7 +491,31 @@ func createNotification(
 	if err != nil {
 		t.Fatalf("CreateNotification: %v", err)
 	}
+	if scheduledAt == nil {
+		makeDue(ctx, t, db, id)
+	}
 	return id
+}
+
+// makeDue moves the outbox row of id a minute into the past. A row written with available_at = now()
+// is due by the database clock at once, but a test that claims it right after cannot rely on that: on
+// Docker Desktop the database clock is set back by up to a second every half minute or so, and a row
+// written just before a step back is not due again until the clock catches up.
+func makeDue(ctx context.Context, t *testing.T, db *pgxpool.Pool, id uuid.UUID) {
+	t.Helper()
+	if _, err := db.Exec(ctx, `UPDATE outbox SET available_at = now() - interval '1 minute' WHERE notification_id = $1`, id); err != nil {
+		t.Fatalf("making the outbox row of %s due: %v", id, err)
+	}
+}
+
+// databaseNow reads the database clock, the clock the relay compares available_at against.
+func databaseNow(ctx context.Context, t *testing.T, db *pgxpool.Pool) time.Time {
+	t.Helper()
+	var now time.Time
+	if err := db.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		t.Fatalf("reading the database clock: %v", err)
+	}
+	return now
 }
 
 func lastEvent(ctx context.Context, t *testing.T, db *pgxpool.Pool, id uuid.UUID) (from, to string) {
