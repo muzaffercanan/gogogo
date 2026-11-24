@@ -94,3 +94,9 @@ FROM (
 SELECT count(*) FILTER (WHERE available_at <= now()) AS due,
        count(*) FILTER (WHERE available_at > now())  AS scheduled
 FROM outbox;
+
+-- name: InsertRetryOutbox :exec
+-- Requests the next delivery attempt of a notification after delay_seconds, measured on the database
+-- clock (the clock the relay compares available_at against).
+INSERT INTO outbox (notification_id, payload, available_at)
+VALUES (@notification_id, @payload, now() + make_interval(secs => @delay_seconds::double precision));

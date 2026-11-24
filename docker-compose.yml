@@ -86,9 +86,18 @@ services:
   worker:
     <<: *app
     command: ["/app/worker"]
+    # Sends in flight finish before the worker exits: up to PROVIDER_TIMEOUT, then the outcome write.
+    stop_grace_period: 30s
     environment:
       <<: *app-env
       PROVIDER_URL: ${PROVIDER_URL:-http://mock-provider:8080/send}
+      PROVIDER_TIMEOUT: ${PROVIDER_TIMEOUT:-10s}
+      RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-100}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-50}
+      WORKER_PREFETCH: ${WORKER_PREFETCH:-5}
+      PRIORITY_WEIGHT_HIGH: ${PRIORITY_WEIGHT_HIGH:-6}
+      PRIORITY_WEIGHT_NORMAL: ${PRIORITY_WEIGHT_NORMAL:-3}
+      PRIORITY_WEIGHT_LOW: ${PRIORITY_WEIGHT_LOW:-1}
     ports: ["8082:8080"]
     depends_on:
       migrate: { condition: service_completed_successfully }

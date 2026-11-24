@@ -80,7 +80,21 @@ func (p *Publisher) Publish(ctx context.Context, msgs []Message) error {
 		}
 		keys[i] = QueueName(m.Channel, m.Priority)
 	}
+	return p.publish(ctx, Exchange, keys, msgs)
+}
 
+// PublishDeadLetter sends m to the dead-letter queue of its channel, as a work queue's reject would,
+// with the same guarantees as Publish. The worker uses it for deliveries it acknowledged before they
+// failed for good (ADR 0015).
+func (p *Publisher) PublishDeadLetter(ctx context.Context, m Message) error {
+	if !slices.Contains(Channels(), m.Channel) {
+		return fmt.Errorf("message %s: no dead-letter queue for channel %q", m.ID, m.Channel)
+	}
+	return p.publish(ctx, DeadLetterExchange, []string{string(m.Channel)}, []Message{m})
+}
+
+// publish sends msgs[i] to exchange with routing key keys[i] and waits for every confirm.
+func (p *Publisher) publish(ctx context.Context, exchange string, keys []string, msgs []Message) error {
 	ch, err := p.sup.Channel()
 	if err != nil {
 		return err
@@ -96,7 +110,7 @@ func (p *Publisher) Publish(ctx context.Context, msgs []Message) error {
 
 	confirms := make([]*amqp.DeferredConfirmation, len(msgs))
 	for i, m := range msgs {
-		confirms[i], err = ch.PublishWithDeferredConfirmWithContext(ctx, Exchange, keys[i], true, false, amqp.Publishing{
+		confirms[i], err = ch.PublishWithDeferredConfirmWithContext(ctx, exchange, keys[i], true, false, amqp.Publishing{
 			Headers:      m.Headers,
 			ContentType:  "application/json",
 			DeliveryMode: amqp.Persistent,
@@ -108,13 +122,13 @@ func (p *Publisher) Publish(ctx context.Context, msgs []Message) error {
 		}
 	}
 
-	for i, dc := range confirms {
-		acked, err := dc.WaitContext(ctx)
+	for i, m := range msgs {
+		acked, err := confirms[i].WaitContext(ctx)
 		if err != nil {
-			return fmt.Errorf("waiting for the confirm of message %s: %w", msgs[i].ID, err)
+			return fmt.Errorf("waiting for the confirm of message %s: %w", m.ID, err)
 		}
 		if !acked { // a nack, or the channel closed before the confirm
-			return fmt.Errorf("broker did not accept message %s", msgs[i].ID)
+			return fmt.Errorf("broker did not accept message %s", m.ID)
 		}
 	}
 

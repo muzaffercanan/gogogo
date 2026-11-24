@@ -1,6 +1,6 @@
 # 0007. At-least-once delivery with guarded state transitions
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended by [0015](0015-ack-after-the-sending-transition.md): the worker acknowledges a message once the notification is `sending`.
 - **Date:** 2026-11-23
 
 ## Context

@@ -119,6 +119,24 @@ func (q *Queries) InsertOutbox(ctx context.Context, arg InsertOutboxParams) erro
 	return err
 }
 
+const insertRetryOutbox = `-- name: InsertRetryOutbox :exec
+INSERT INTO outbox (notification_id, payload, available_at)
+VALUES ($1, $2, now() + make_interval(secs => $3::double precision))
+`
+
+type InsertRetryOutboxParams struct {
+	NotificationID uuid.UUID
+	Payload        []byte
+	DelaySeconds   float64
+}
+
+// Requests the next delivery attempt of a notification after delay_seconds, measured on the database
+// clock (the clock the relay compares available_at against).
+func (q *Queries) InsertRetryOutbox(ctx context.Context, arg InsertRetryOutboxParams) error {
+	_, err := q.db.Exec(ctx, insertRetryOutbox, arg.NotificationID, arg.Payload, arg.DelaySeconds)
+	return err
+}
+
 const notifyOutbox = `-- name: NotifyOutbox :exec
 SELECT pg_notify('outbox', '')
 `

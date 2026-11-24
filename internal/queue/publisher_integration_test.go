@@ -123,3 +123,31 @@ func TestPublishStopsWithItsContext(t *testing.T) {
 		t.Errorf("Publish with a cancelled context = %v, want context.Canceled", err)
 	}
 }
+
+func TestPublishDeadLetterRoutesToTheDeadLetterQueueOfTheChannel(t *testing.T) {
+	pub, vhost := connectedPublisher(t)
+	m := message(domain.ChannelPush, domain.PriorityHigh)
+	m.Headers["failure_reason"] = "provider answered 400"
+
+	if err := pub.PublishDeadLetter(t.Context(), m); err != nil {
+		t.Fatalf("PublishDeadLetter = %v, want nil", err)
+	}
+
+	ch := openChannel(t, dial(t, vhost))
+	d := receive(t, ch, "push.dlq")
+	if d.MessageId != m.ID || string(d.Body) != string(m.Body) || d.Headers["failure_reason"] != "provider answered 400" {
+		t.Errorf("push.dlq received id %q body %s headers %v, want the message with its failure reason", d.MessageId, d.Body, d.Headers)
+	}
+	for _, name := range []string{"push.high", "sms.dlq", "email.dlq"} {
+		assertEmpty(t, ch, name)
+	}
+}
+
+func TestPublishDeadLetterRejectsAnUnknownChannel(t *testing.T) {
+	pub, _ := connectedPublisher(t)
+	m := message(domain.ChannelSMS, domain.PriorityHigh)
+	m.Channel = "fax"
+	if err := pub.PublishDeadLetter(t.Context(), m); err == nil {
+		t.Error("PublishDeadLetter to an unknown channel succeeded, want an error")
+	}
+}

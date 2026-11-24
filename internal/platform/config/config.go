@@ -39,6 +39,16 @@ type Worker struct {
 	RedisURL        string        `env:"REDIS_URL,required"`
 	ProviderURL     string        `env:"PROVIDER_URL,required"`
 	ProviderTimeout time.Duration `env:"PROVIDER_TIMEOUT" envDefault:"10s"`
+	// RateLimit is the most sends each channel starts per second, across all workers (ADR 0003).
+	RateLimit int `env:"RATE_LIMIT_PER_SECOND" envDefault:"100"`
+	// Prefetch is how many messages of each work queue a worker holds for the priority picker (K-35).
+	Prefetch int `env:"WORKER_PREFETCH" envDefault:"5"`
+	// Concurrency is how many sends of each channel a worker runs at once (K-39).
+	Concurrency int `env:"WORKER_CONCURRENCY" envDefault:"50"`
+	// Priority weights while all priorities have messages waiting (ADR 0002). Each is at least 1.
+	WeightHigh   int `env:"PRIORITY_WEIGHT_HIGH"   envDefault:"6"`
+	WeightNormal int `env:"PRIORITY_WEIGHT_NORMAL" envDefault:"3"`
+	WeightLow    int `env:"PRIORITY_WEIGHT_LOW"    envDefault:"1"`
 }
 
 // MockProvider configures the fake provider used for local runs and load tests.
