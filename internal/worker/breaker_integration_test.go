@@ -21,9 +21,12 @@ func TestWorkerHoldsItsDeliveriesWhileTheBreakerIsOpen(t *testing.T) {
 		}
 		return accepted("m-9")
 	})
-	// One send at a time, so the breaker sees every result before the next delivery starts (but for
-	// the one already let through while the last result was pending).
+	// One send at a time, so the breaker sees every result before the next delivery starts, but for
+	// the one it let through while the last result was pending. That one then waits for the sender and
+	// a token, so it can reach the provider after the breaker has opened; the slow limiter makes it
+	// always do so.
 	h.opts.Concurrency = 1
+	h.rate = 5
 	h.opts.Breaker = worker.BreakerSettings{Window: 10 * time.Second, MinRequests: 5, FailureRatio: 0.5, OpenFor: 2 * time.Second}
 	var created []domain.Notification
 	for range 12 {
@@ -33,14 +36,12 @@ func TestWorkerHoldsItsDeliveriesWhileTheBreakerIsOpen(t *testing.T) {
 	h.startWorker(t)
 
 	waitFor(t, "the breaker opens", func() bool { return metric(t, h.reg, "circuit_breaker_state") == 2 })
+	// While open the worker sends nothing but the delivery already let through, and picks nothing more
+	// (at 5 sends/s it would have sent about 5 more in this second).
+	time.Sleep(time.Second)
 	tripped := len(h.provider.got())
 	if tripped < 5 || tripped > 6 {
-		t.Errorf("the breaker opened after %d requests, want 5 (plus at most the one already let through)", tripped)
-	}
-	// While open the worker sends nothing and picks nothing more.
-	time.Sleep(time.Second)
-	if n := len(h.provider.got()); n != tripped {
-		t.Fatalf("the provider got %d requests while the breaker was open, want still %d", n, tripped)
+		t.Fatalf("the provider got %d requests by 1 s after the breaker opened, want 5 (plus at most the one already let through)", tripped)
 	}
 
 	// The provider recovers; after the open time one probe goes through, succeeds and closes the
