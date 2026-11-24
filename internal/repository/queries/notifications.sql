@@ -25,10 +25,14 @@ WHERE idempotency_key = @idempotency_key::text;
 -- statuses, so concurrent transitions of the same notification have exactly one winner.
 -- Column side effects follow the target status: entering sending counts an attempt and starts the
 -- lease, entering sent stamps sent_at, and leaving sending ends the lease.
+-- The row is locked by id alone and its status checked under the lock. Filtering on the status in the
+-- locking SELECT would judge the row by the statement's snapshot: a row that a concurrent, not yet
+-- committed transaction is moving into an allowed status (the relay queuing it before its commit) would
+-- be skipped without waiting, and the transition refused.
 WITH locked AS (
     SELECT cur.id, cur.status
     FROM notifications AS cur
-    WHERE cur.id = @id AND cur.status = ANY(@from_statuses::text[])
+    WHERE cur.id = @id
     FOR UPDATE
 ), updated AS (
     UPDATE notifications AS n
@@ -40,7 +44,7 @@ WITH locked AS (
         last_error          = COALESCE(sqlc.narg(last_error)::text, n.last_error),
         provider_message_id = COALESCE(sqlc.narg(provider_message_id)::text, n.provider_message_id)
     FROM locked
-    WHERE n.id = locked.id
+    WHERE n.id = locked.id AND locked.status = ANY(@from_statuses::text[])
     RETURNING n.id, n.batch_id, n.idempotency_key, n.request_hash, n.channel, n.priority, n.recipient,
               n.content, n.status, n.attempts, n.max_attempts, n.last_error, n.provider_message_id,
               n.correlation_id, n.scheduled_at, n.sending_started_at, n.created_at, n.updated_at,

@@ -147,19 +147,19 @@ const transitionNotification = `-- name: TransitionNotification :one
 WITH locked AS (
     SELECT cur.id, cur.status
     FROM notifications AS cur
-    WHERE cur.id = $1 AND cur.status = ANY($2::text[])
+    WHERE cur.id = $1
     FOR UPDATE
 ), updated AS (
     UPDATE notifications AS n
-    SET status              = $3::text,
+    SET status              = $2::text,
         updated_at          = now(),
-        attempts            = n.attempts + CASE WHEN $3::text = 'sending' THEN 1 ELSE 0 END,
-        sending_started_at  = CASE WHEN $3::text = 'sending' THEN now() END,
-        sent_at             = CASE WHEN $3::text = 'sent' THEN now() ELSE n.sent_at END,
-        last_error          = COALESCE($4::text, n.last_error),
-        provider_message_id = COALESCE($5::text, n.provider_message_id)
+        attempts            = n.attempts + CASE WHEN $2::text = 'sending' THEN 1 ELSE 0 END,
+        sending_started_at  = CASE WHEN $2::text = 'sending' THEN now() END,
+        sent_at             = CASE WHEN $2::text = 'sent' THEN now() ELSE n.sent_at END,
+        last_error          = COALESCE($3::text, n.last_error),
+        provider_message_id = COALESCE($4::text, n.provider_message_id)
     FROM locked
-    WHERE n.id = locked.id
+    WHERE n.id = locked.id AND locked.status = ANY($5::text[])
     RETURNING n.id, n.batch_id, n.idempotency_key, n.request_hash, n.channel, n.priority, n.recipient,
               n.content, n.status, n.attempts, n.max_attempts, n.last_error, n.provider_message_id,
               n.correlation_id, n.scheduled_at, n.sending_started_at, n.created_at, n.updated_at,
@@ -177,10 +177,10 @@ FROM updated
 
 type TransitionNotificationParams struct {
 	ID                uuid.UUID
-	FromStatuses      []string
 	ToStatus          string
 	LastError         *string
 	ProviderMessageID *string
+	FromStatuses      []string
 	Reason            *string
 }
 
@@ -212,13 +212,17 @@ type TransitionNotificationRow struct {
 // statuses, so concurrent transitions of the same notification have exactly one winner.
 // Column side effects follow the target status: entering sending counts an attempt and starts the
 // lease, entering sent stamps sent_at, and leaving sending ends the lease.
+// The row is locked by id alone and its status checked under the lock. Filtering on the status in the
+// locking SELECT would judge the row by the statement's snapshot: a row that a concurrent, not yet
+// committed transaction is moving into an allowed status (the relay queuing it before its commit) would
+// be skipped without waiting, and the transition refused.
 func (q *Queries) TransitionNotification(ctx context.Context, arg TransitionNotificationParams) (TransitionNotificationRow, error) {
 	row := q.db.QueryRow(ctx, transitionNotification,
 		arg.ID,
-		arg.FromStatuses,
 		arg.ToStatus,
 		arg.LastError,
 		arg.ProviderMessageID,
+		arg.FromStatuses,
 		arg.Reason,
 	)
 	var i TransitionNotificationRow

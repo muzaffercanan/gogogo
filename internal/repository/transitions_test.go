@@ -7,8 +7,10 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
@@ -216,6 +218,80 @@ func TestTransitionNotificationRaceHasOneWinner(t *testing.T) {
 	}
 	if n := eventCount(ctx, t, db, id); n != 2 {
 		t.Errorf("%d status events, want 2 (creation and the winning transition)", n)
+	}
+}
+
+// moveUncommitted starts a transaction that moves notification id to status and returns it uncommitted,
+// as the relay holds the queued status of the notifications it is publishing until its commit.
+func moveUncommitted(ctx context.Context, t *testing.T, db *pgxpool.Pool, id uuid.UUID, status domain.Status) pgx.Tx {
+	t.Helper()
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(ctx) }) // a no-op once the test has committed
+	if _, err := tx.Exec(ctx, `UPDATE notifications SET status = $2 WHERE id = $1`, id, string(status)); err != nil {
+		t.Fatal(err)
+	}
+	return tx
+}
+
+func TestTransitionNotificationWaitsForATransactionMovingItIntoAnAllowedStatus(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	id := createInStatus(ctx, t, store, db, domain.StatusRetryScheduled)
+	relay := moveUncommitted(ctx, t, db, id, domain.StatusQueued)
+
+	type result struct {
+		n   domain.Notification
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := store.TransitionNotification(ctx, repository.Transition{ID: id, From: []domain.Status{domain.StatusQueued}, To: domain.StatusSending})
+		done <- result{n, err}
+	}()
+	select {
+	case r := <-done:
+		t.Fatalf("TransitionNotification returned before the concurrent transaction committed: %+v, %v", r.n.Status, r.err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := relay.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.err != nil || r.n.Status != domain.StatusSending {
+			t.Errorf("TransitionNotification after the commit = %s, %v; want sending", r.n.Status, r.err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("TransitionNotification did not return after the commit")
+	}
+	if from, to, _ := lastEvent(ctx, t, db, id); from != "queued" || to != "sending" {
+		t.Errorf("last event %s -> %s, want queued -> sending", from, to)
+	}
+}
+
+func TestTransitionNotificationRefusesWhatAConcurrentTransactionMovedAway(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	id := createInStatus(ctx, t, store, db, domain.StatusQueued)
+	cancel := moveUncommitted(ctx, t, db, id, domain.StatusCancelled)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.TransitionNotification(ctx, repository.Transition{ID: id, From: []domain.Status{domain.StatusQueued}, To: domain.StatusSending})
+		done <- err
+	}()
+	time.Sleep(200 * time.Millisecond)
+	if err := cancel.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var conflict *domain.StatusConflictError
+	if err := <-done; !errors.As(err, &conflict) || conflict.Current != domain.StatusCancelled {
+		t.Errorf("TransitionNotification after a concurrent cancel = %v, want a conflict with cancelled", err)
 	}
 }
 
