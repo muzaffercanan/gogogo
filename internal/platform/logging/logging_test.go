@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"testing"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestCorrelationIDIsAddedFromContext(t *testing.T) {
@@ -32,6 +34,48 @@ func TestCorrelationIDIsAddedFromContext(t *testing.T) {
 			}
 			if rec["service"] != "test" {
 				t.Errorf("service attribute lost: %v", rec["service"])
+			}
+		})
+	}
+}
+
+func TestTraceIDsAreAddedFromContext(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("0af7651916cd43dd8448eb211c80319c")
+	spanID, _ := trace.SpanIDFromHex("b7ad6b7169203331")
+	span := trace.NewSpanContext(trace.SpanContextConfig{TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled})
+	tests := []struct {
+		name                string
+		ctx                 context.Context
+		wantTrace, wantSpan string
+	}{
+		{
+			name:      "with a span",
+			ctx:       trace.ContextWithSpanContext(context.Background(), span),
+			wantTrace: "0af7651916cd43dd8448eb211c80319c",
+			wantSpan:  "b7ad6b7169203331",
+		},
+		{
+			name:      "with a span that is not sampled",
+			ctx:       trace.ContextWithSpanContext(context.Background(), span.WithTraceFlags(0)),
+			wantTrace: "0af7651916cd43dd8448eb211c80319c",
+			wantSpan:  "b7ad6b7169203331",
+		},
+		{name: "without a span", ctx: context.Background()},
+		{name: "with an invalid span context", ctx: trace.ContextWithSpanContext(context.Background(), trace.SpanContext{})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			New(&buf, "info").With("service", "test").InfoContext(tt.ctx, "hello")
+
+			var rec map[string]any
+			if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+				t.Fatalf("log line is not JSON: %v (%q)", err, buf.String())
+			}
+			gotTrace, hasTrace := rec["trace_id"].(string)
+			gotSpan, hasSpan := rec["span_id"].(string)
+			if gotTrace != tt.wantTrace || gotSpan != tt.wantSpan || hasTrace != (tt.wantTrace != "") || hasSpan != (tt.wantSpan != "") {
+				t.Errorf("trace_id = %q, span_id = %q, want %q and %q", gotTrace, gotSpan, tt.wantTrace, tt.wantSpan)
 			}
 		})
 	}

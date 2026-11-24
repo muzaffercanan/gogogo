@@ -16,6 +16,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
@@ -78,6 +79,27 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("shutting down tracing: %w", err)
 	}
 	return nil
+}
+
+// traceParentKey is the W3C trace context field that identifies a span and its trace.
+const traceParentKey = "traceparent"
+
+// TraceParent returns the W3C traceparent of the span context ctx carries, or "" if it carries none.
+// A trace crosses the outbox and the broker as this string, and WithTraceParent turns it back into a
+// context. The tracestate that may come with it is not carried.
+func TraceParent(ctx context.Context) string {
+	carrier := propagation.MapCarrier{}
+	propagation.TraceContext{}.Inject(ctx, carrier)
+	return carrier.Get(traceParentKey)
+}
+
+// WithTraceParent returns ctx carrying the span context of traceparent as a remote parent, so spans
+// started from it continue that trace. An empty or malformed traceparent leaves ctx as it is.
+func WithTraceParent(ctx context.Context, traceparent string) context.Context {
+	if traceparent == "" {
+		return ctx
+	}
+	return propagation.TraceContext{}.Extract(ctx, propagation.MapCarrier{traceParentKey: traceparent})
 }
 
 // exporting reports whether an OTLP endpoint for traces is configured.

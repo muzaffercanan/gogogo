@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type correlationKey struct{}
@@ -22,7 +24,8 @@ func CorrelationID(ctx context.Context) string {
 
 // New returns a JSON logger that writes to w at the given level (debug, info, warn, error; case-insensitive).
 // Unknown levels fall back to info. Records logged with a context that carries a correlation ID
-// automatically get a correlation_id attribute.
+// automatically get a correlation_id attribute, and with a context that carries a span, trace_id and
+// span_id attributes that find it in the tracing backend.
 func New(w io.Writer, level string) *slog.Logger {
 	h := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: ParseLevel(level)})
 	return slog.New(contextHandler{Handler: h})
@@ -45,6 +48,9 @@ type contextHandler struct {
 func (h contextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if id := CorrelationID(ctx); id != "" {
 		r.AddAttrs(slog.String("correlation_id", id))
+	}
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		r.AddAttrs(slog.String("trace_id", sc.TraceID().String()), slog.String("span_id", sc.SpanID().String()))
 	}
 	return h.Handler.Handle(ctx, r)
 }

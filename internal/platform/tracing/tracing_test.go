@@ -191,6 +191,37 @@ func TestSetup(t *testing.T) {
 	}
 }
 
+func TestTraceParentCrossesAsAString(t *testing.T) {
+	ctx, parent := remoteParent(t)
+	tp := tracing.TraceParent(ctx)
+	if want := "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"; tp != want {
+		t.Fatalf("TraceParent = %q, want %q", tp, want)
+	}
+
+	got := trace.SpanContextFromContext(tracing.WithTraceParent(context.Background(), tp))
+	if !got.Equal(parent) {
+		t.Errorf("WithTraceParent(%q) carries %+v, want %+v", tp, got, parent)
+	}
+	if !got.IsRemote() {
+		t.Error("WithTraceParent carries a span context that is not remote; spans started from it would not count it as a parent from another process")
+	}
+}
+
+func TestTraceParentOfAContextWithoutASpanIsEmpty(t *testing.T) {
+	if tp := tracing.TraceParent(context.Background()); tp != "" {
+		t.Errorf("TraceParent = %q, want \"\"", tp)
+	}
+}
+
+func TestWithTraceParentIgnoresWhatIsNotATraceParent(t *testing.T) {
+	for _, tp := range []string{"", "not a traceparent", "00-00000000000000000000000000000000-b7ad6b7169203331-01"} {
+		ctx := tracing.WithTraceParent(context.Background(), tp)
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			t.Errorf("WithTraceParent(%q) carries %+v, want no span context", tp, sc)
+		}
+	}
+}
+
 func TestSetupLogsSpansItCannotExport(t *testing.T) {
 	col := newCollector(t, http.StatusBadRequest)
 	for _, key := range otelEnv {
