@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/outbox"
 	"github.com/muzaffercanan/gogogo/internal/platform/ops"
@@ -78,7 +79,7 @@ func TestFailedStepsCountAsErrorsExceptOnShutdown(t *testing.T) {
 	store := closedStore(t)
 	reg := prometheus.NewRegistry()
 	metrics := outbox.NewMetrics(reg)
-	relay := outbox.NewRelay(store, nil, metrics, discardLog())
+	relay := outbox.NewRelay(store, nil, metrics, noop.NewTracerProvider(), discardLog())
 	reaper := outbox.NewReaper(store, metrics, discardLog())
 
 	if _, _, err := relay.Once(t.Context()); err == nil {

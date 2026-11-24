@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"strings"
 	"testing"
 
@@ -49,9 +50,29 @@ func TestPublishRejectsAMessageWithoutAQueue(t *testing.T) {
 	}
 }
 
-func TestCorrelationHeadersRoundTripAndContextPropagation(t *testing.T) {
-	if got := queue.CorrelationHeaders(""); got != nil {
-		t.Errorf("CorrelationHeaders(\"\") = %v, want nil", got)
+func TestHeadersRoundTripAndContextPropagation(t *testing.T) {
+	if got := queue.Headers("", ""); got != nil {
+		t.Errorf("Headers(\"\", \"\") = %v, want nil", got)
+	}
+	const tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+	for _, tt := range []struct {
+		correlationID, traceparent string
+		want                       amqp.Table
+	}{
+		{"corr-42", "", amqp.Table{queue.CorrelationHeader: "corr-42"}},
+		{"", tp, amqp.Table{queue.TraceParentHeader: tp}},
+		{"corr-42", tp, amqp.Table{queue.CorrelationHeader: "corr-42", queue.TraceParentHeader: tp}},
+	} {
+		got := queue.Headers(tt.correlationID, tt.traceparent)
+		if !maps.Equal(got, tt.want) {
+			t.Errorf("Headers(%q, %q) = %v, want %v", tt.correlationID, tt.traceparent, got, tt.want)
+		}
+		if queue.CorrelationID(got) != tt.correlationID || queue.TraceParent(got) != tt.traceparent {
+			t.Errorf("CorrelationID and TraceParent of %v = %q and %q, want %q and %q", got, queue.CorrelationID(got), queue.TraceParent(got), tt.correlationID, tt.traceparent)
+		}
+	}
+	if got := queue.TraceParent(amqp.Table{queue.TraceParentHeader: 123}); got != "" {
+		t.Errorf("TraceParent(non-string) = %q, want \"\"", got)
 	}
 	if got := queue.CorrelationID(nil); got != "" {
 		t.Errorf("CorrelationID(nil) = %q, want \"\"", got)
@@ -60,10 +81,7 @@ func TestCorrelationHeadersRoundTripAndContextPropagation(t *testing.T) {
 		t.Errorf("CorrelationID(non-string) = %q, want \"\"", got)
 	}
 
-	headers := queue.CorrelationHeaders("corr-42")
-	if got := queue.CorrelationID(headers); got != "corr-42" {
-		t.Errorf("CorrelationID(CorrelationHeaders(\"corr-42\")) = %q, want \"corr-42\"", got)
-	}
+	headers := queue.Headers("corr-42", "")
 
 	ctx := queue.WithCorrelationID(t.Context(), headers)
 	if got := logging.CorrelationID(ctx); got != "corr-42" {

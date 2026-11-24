@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/muzaffercanan/gogogo/internal/outbox"
 )
 
 func TestBackoffStaysInAGrowingCappedWindow(t *testing.T) {
-	r := outbox.NewRelay(nil, nil, discardMetrics(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := outbox.NewRelay(nil, nil, discardMetrics(), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	outbox.SetTiming(r, 100, time.Second, 200*time.Millisecond, 5*time.Second)
 
 	tests := []struct {

@@ -62,12 +62,15 @@ func consuming(t *testing.T, prefetch int) (*queue.Consumer, *amqp.Channel) {
 	return c, ch
 }
 
+// sentTraceParent is the trace context send puts in every message.
+const sentTraceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+
 // send publishes a notification message the way the relay does: persistent, with the notification ID as
-// the message-id and the correlation ID in the headers.
+// the message-id and the correlation ID and a trace context in the headers.
 func send(t *testing.T, ch *amqp.Channel, c domain.Channel, p domain.Priority, id, correlationID string) {
 	t.Helper()
 	err := ch.PublishWithContext(t.Context(), queue.Exchange, queue.QueueName(c, p), true, false, amqp.Publishing{
-		Headers:      queue.CorrelationHeaders(correlationID),
+		Headers:      queue.Headers(correlationID, sentTraceParent),
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		MessageId:    id,
@@ -126,6 +129,9 @@ func TestConsumerPutsEachWorkQueueIntoTheBufferOfItsPriority(t *testing.T) {
 		}
 		if d.CorrelationID != "corr-"+string(p) {
 			t.Errorf("%s: correlation ID %q, want %q", want, d.CorrelationID, "corr-"+string(p))
+		}
+		if d.TraceParent != sentTraceParent {
+			t.Errorf("%s: traceparent %q, want %q", want, d.TraceParent, sentTraceParent)
 		}
 		if string(d.Body) != `{"id":"`+want+`"}` {
 			t.Errorf("%s: body %s", want, d.Body)

@@ -10,8 +10,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
+	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 	"github.com/muzaffercanan/gogogo/internal/repository"
 )
@@ -43,6 +47,7 @@ type Relay struct {
 	store   *repository.Store
 	pub     Publisher
 	metrics *Metrics
+	tracer  trace.Tracer
 	log     *slog.Logger
 
 	batchSize              int
@@ -51,13 +56,14 @@ type Relay struct {
 	minBackoff, maxBackoff time.Duration
 }
 
-// NewRelay returns a relay that reads due rows from store, publishes them through pub and records its
-// steps in metrics.
-func NewRelay(store *repository.Store, pub Publisher, metrics *Metrics, log *slog.Logger) *Relay {
+// NewRelay returns a relay that reads due rows from store, publishes them through pub, records its
+// steps in metrics and traces each publish with tp.
+func NewRelay(store *repository.Store, pub Publisher, metrics *Metrics, tp trace.TracerProvider, log *slog.Logger) *Relay {
 	return &Relay{
 		store:        store,
 		pub:          pub,
 		metrics:      metrics,
+		tracer:       tp.Tracer("github.com/muzaffercanan/gogogo/internal/outbox"),
 		log:          log,
 		batchSize:    batchSize,
 		stepTimeout:  stepTimeout,
@@ -72,12 +78,19 @@ func NewRelay(store *repository.Store, pub Publisher, metrics *Metrics, log *slo
 // by the step timeout. Each published notification is logged after commit with its correlation ID.
 // Metrics are recorded after commit too; a failed step counts as a dispatch error unless ctx itself
 // ended (shutdown).
+//
+// Every notification gets a producer span that continues the trace of its outbox row (a new trace if
+// the row has none) and lasts until the step's commit; its traceparent goes into the message headers.
 func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 	start := time.Now()
 	stepCtx, cancel := context.WithTimeout(ctx, r.stepTimeout)
 	defer cancel()
 
-	var dispatched []repository.OutboxItem
+	var (
+		dispatched []repository.OutboxItem
+		spans      []trace.Span
+	)
+	defer func() { endSpans(spans, err) }()
 	claimed, published, err = r.store.DispatchOutbox(stepCtx, r.batchSize, func(ctx context.Context, items []repository.OutboxItem) error {
 		msgs := make([]queue.Message, len(items))
 		for i, it := range items {
@@ -85,12 +98,14 @@ func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 			if err != nil {
 				return fmt.Errorf("encoding message body of notification %s: %w", it.NotificationID, err)
 			}
+			span := r.publishSpan(ctx, it)
+			spans = append(spans, span)
 			msgs[i] = queue.Message{
 				Channel:  it.Channel,
 				Priority: it.Priority,
 				ID:       it.NotificationID.String(),
 				Body:     body,
-				Headers:  queue.CorrelationHeaders(it.CorrelationID),
+				Headers:  queue.Headers(it.CorrelationID, tracing.TraceParent(trace.ContextWithSpan(ctx, span))),
 			}
 		}
 		if err := r.pub.Publish(ctx, msgs); err != nil {
@@ -111,6 +126,37 @@ func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 			"notification_id", it.NotificationID, "channel", it.Channel, "priority", it.Priority)
 	}
 	return claimed, published, nil
+}
+
+// publishSpan starts the producer span of publishing it, under the span its outbox row names.
+func (r *Relay) publishSpan(ctx context.Context, it repository.OutboxItem) trace.Span {
+	key := queue.QueueName(it.Channel, it.Priority)
+	_, span := r.tracer.Start(tracing.WithTraceParent(ctx, it.TraceParent), "publish "+key,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			semconv.MessagingSystemRabbitMQ,
+			semconv.MessagingOperationTypeSend,
+			semconv.MessagingOperationName("publish"),
+			semconv.MessagingDestinationName(queue.Exchange),
+			semconv.MessagingRabbitMQDestinationRoutingKey(key),
+			semconv.MessagingMessageID(it.NotificationID.String()),
+			tracing.NotificationIDKey.String(it.NotificationID.String()),
+			tracing.NotificationChannelKey.String(string(it.Channel)),
+			tracing.NotificationPriorityKey.String(string(it.Priority)),
+		))
+	return span
+}
+
+// endSpans ends the publish spans of a step, as failed if the step failed: its transaction rolled back,
+// so the notifications are published again in a later step.
+func endSpans(spans []trace.Span, err error) {
+	for _, span := range spans {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "outbox step failed; the notification is published again later")
+		}
+		span.End()
+	}
 }
 
 // Run drains due outbox rows until ctx ends. It wakes immediately when PostgreSQL delivers a NOTIFY on

@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
@@ -29,7 +30,7 @@ func TestRelayOncePublishesDueNotificationsToTheirWorkQueues(t *testing.T) {
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
 	reg := prometheus.NewRegistry()
-	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 
 	pendingID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
 	retryID := createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityLow, nil)
@@ -137,7 +138,7 @@ func TestRelayOnceRollsBackWhenBrokerRejectsPublish(t *testing.T) {
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
 	reg := prometheus.NewRegistry()
-	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 
 	id := createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityNormal, nil)
 
@@ -203,7 +204,7 @@ func TestRelayRunDrainsMultiBatchBacklogAndRecoversFromOutage(t *testing.T) {
 	sup := supervise(t, url)
 	pub := queue.NewPublisher(sup)
 
-	relay := outbox.NewRelay(store, pub, discardMetrics(), slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, discardMetrics(), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	// Poll interval is 30 s so draining 7 rows with batch size 3 must chain full batches immediately
 	// rather than waiting for the next poll tick.
 	outbox.SetTiming(relay, 3, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
@@ -261,7 +262,7 @@ func TestRelayRunWakesOnNotifyWithoutWaitingForPoll(t *testing.T) {
 	db := pg.NewDatabase(t)
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
-	relay := outbox.NewRelay(store, pub, discardMetrics(), slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, discardMetrics(), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	// A 30 s poll interval guarantees only LISTEN/NOTIFY can wake the relay within receive's 5 s timeout.
 	outbox.SetTiming(relay, 100, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
 
@@ -306,7 +307,7 @@ func TestRelayRunPollingFallbackDispatchesScheduledRowWhenDue(t *testing.T) {
 	db := pg.NewDatabase(t)
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
-	relay := outbox.NewRelay(store, pub, discardMetrics(), slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, discardMetrics(), noop.NewTracerProvider(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	outbox.SetTiming(relay, 100, 50*time.Millisecond, 10*time.Millisecond, 50*time.Millisecond)
 
 	// NOTIFY fires at creation while available_at is still in the future; no new NOTIFY fires when the
@@ -342,7 +343,7 @@ func TestBacklogCollectorReportsDueAndScheduledOutboxRows(t *testing.T) {
 	store := repository.New(db)
 	pub, _ := connectedPublisher(t)
 	log := slog.New(slog.NewTextHandler(t.Output(), nil))
-	relay := outbox.NewRelay(store, pub, discardMetrics(), log)
+	relay := outbox.NewRelay(store, pub, discardMetrics(), noop.NewTracerProvider(), log)
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(outbox.NewBacklogCollector(store, log))
@@ -382,7 +383,7 @@ func TestCorrelationIDPropagatesThroughOutboxHeadersAndLogs(t *testing.T) {
 
 	var logBuf bytes.Buffer
 	log := logging.New(&logBuf, "info")
-	relay := outbox.NewRelay(store, pub, discardMetrics(), log)
+	relay := outbox.NewRelay(store, pub, discardMetrics(), noop.NewTracerProvider(), log)
 	reaper := outbox.NewReaper(store, discardMetrics(), log)
 
 	const corrID = "corr-e2e-99"

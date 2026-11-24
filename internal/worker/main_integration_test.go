@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
@@ -199,7 +200,7 @@ func newHarness(t *testing.T, answerFor func(int) answer) *harness {
 	})
 	waitFor(t, "the supervisor is ready", func() bool { return h.sup.Check(context.Background()) == nil })
 	h.pub = queue.NewPublisher(h.sup)
-	h.relay = outbox.NewRelay(h.store, h.pub, outbox.NewMetrics(prometheus.NewRegistry()), h.log)
+	h.relay = outbox.NewRelay(h.store, h.pub, outbox.NewMetrics(prometheus.NewRegistry()), noop.NewTracerProvider(), h.log)
 	h.provider = newFakeProvider(t, answerFor)
 	return h
 }

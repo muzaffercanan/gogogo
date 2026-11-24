@@ -28,7 +28,10 @@ type Delivery struct {
 	Priority domain.Priority
 	// CorrelationID comes from the correlation_id header, or is "" if the message has none.
 	CorrelationID string
-	Body          []byte
+	// TraceParent comes from the traceparent header: the relay's publish span, which the delivery's
+	// trace continues. It is "" if the message has none.
+	TraceParent string
+	Body        []byte
 	// Redelivered reports that the broker delivered the message before, to this or another consumer,
 	// without it being acknowledged.
 	Redelivered bool
@@ -212,6 +215,7 @@ func (c *Consumer) consume(ctx context.Context) (started bool, err error) {
 			Channel:        c.channel,
 			Priority:       priorities[i],
 			CorrelationID:  CorrelationID(d.Headers),
+			TraceParent:    TraceParent(d.Headers),
 			Body:           d.Body,
 			Redelivered:    d.Redelivered,
 			acker:          d.Acknowledger,

@@ -11,17 +11,27 @@ import (
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 )
 
-// CorrelationHeader is the AMQP header key that carries a notification's correlation ID from the
-// relay to the worker.
-const CorrelationHeader = "correlation_id"
+// AMQP header keys that carry a notification's correlation ID and trace context from the relay to the
+// worker.
+const (
+	CorrelationHeader = "correlation_id"
+	TraceParentHeader = "traceparent"
+)
 
-// CorrelationHeaders returns an AMQP header table carrying id under CorrelationHeader, or nil when id
-// is empty.
-func CorrelationHeaders(id string) amqp.Table {
-	if id == "" {
-		return nil
+// Headers returns an AMQP header table carrying correlationID under CorrelationHeader and traceparent
+// under TraceParentHeader, leaving out the empty ones, or nil when both are empty.
+func Headers(correlationID, traceparent string) amqp.Table {
+	var h amqp.Table
+	for key, value := range map[string]string{CorrelationHeader: correlationID, TraceParentHeader: traceparent} {
+		if value == "" {
+			continue
+		}
+		if h == nil {
+			h = amqp.Table{}
+		}
+		h[key] = value
 	}
-	return amqp.Table{CorrelationHeader: id}
+	return h
 }
 
 // CorrelationID extracts the correlation ID from an AMQP delivery's headers, or returns "" if none is
@@ -29,6 +39,13 @@ func CorrelationHeaders(id string) amqp.Table {
 func CorrelationID(headers amqp.Table) string {
 	id, _ := headers[CorrelationHeader].(string)
 	return id
+}
+
+// TraceParent extracts the W3C traceparent from an AMQP delivery's headers, or returns "" if none is
+// present.
+func TraceParent(headers amqp.Table) string {
+	tp, _ := headers[TraceParentHeader].(string)
+	return tp
 }
 
 // WithCorrelationID returns a copy of ctx carrying the correlation ID from headers (if any), so records

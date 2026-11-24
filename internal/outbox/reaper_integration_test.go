@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
@@ -25,7 +26,7 @@ func TestReaperAndRelayRecoverStuckDeliveriesAndFailExhausted(t *testing.T) {
 	pub, vhost := connectedPublisher(t)
 	log := slog.New(slog.NewTextHandler(t.Output(), nil))
 
-	relay := outbox.NewRelay(store, pub, discardMetrics(), log)
+	relay := outbox.NewRelay(store, pub, discardMetrics(), noop.NewTracerProvider(), log)
 	// A 30 s poll interval requires the reaper's NOTIFY outbox to wake the relay.
 	outbox.SetTiming(relay, 100, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
 

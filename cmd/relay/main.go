@@ -74,7 +74,7 @@ func run() error {
 	metrics := outbox.NewMetrics(reg)
 	reg.MustRegister(outbox.NewBacklogCollector(store, log))
 
-	relay := outbox.NewRelay(store, queue.NewPublisher(mq), metrics, log)
+	relay := outbox.NewRelay(store, queue.NewPublisher(mq), metrics, tp, log)
 	relayDone := make(chan struct{})
 	go func() {
 		defer close(relayDone)
