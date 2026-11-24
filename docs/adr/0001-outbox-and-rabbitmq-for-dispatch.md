@@ -34,7 +34,7 @@ phantom messages.
 - No dual write on the publish path or the retry path; ingest survives broker outages.
 - One delay mechanism for retries and scheduled delivery; no broker plugin, no per-tier TTL queues.
 - Every message still passes through PostgreSQL, so RabbitMQ does not reduce database load.
-- One more infrastructure component, and a reconnect supervisor is needed (`amqp091-go` does not reconnect).
+- One more infrastructure component, and the broker connection needs reconnect handling (see 0013).
 - Delivery is at-least-once. Duplicate handling is covered in a separate decision.
 - Revisit if the relay becomes the bottleneck (move to change data capture) or if many independent
   consumers need the event stream (move to a log-based broker).

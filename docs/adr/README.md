@@ -16,3 +16,4 @@ Short records of the significant design decisions: context, decision, alternativ
 | [0010](0010-realtime-status-via-redis-pubsub.md) | Real-time status updates over WebSocket via Redis pub/sub | Accepted |
 | [0011](0011-commit-generated-code.md) | Generated code is committed; generator versions are pinned | Accepted |
 | [0012](0012-integration-tests-with-testcontainers.md) | Integration tests against real dependencies with Testcontainers | Accepted |
+| [0013](0013-rabbitmq-topology-publishing-and-reconnection.md) | RabbitMQ topology, publishing and reconnection | Accepted |
