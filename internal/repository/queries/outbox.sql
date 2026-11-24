@@ -8,3 +8,44 @@ VALUES (@notification_id, @payload, COALESCE(sqlc.narg(available_at)::timestampt
 -- Wakes up relays listening on the outbox channel. Inside a transaction, PostgreSQL delivers the
 -- notification only when the transaction commits.
 SELECT pg_notify('outbox', '');
+
+-- name: ClaimDueOutbox :many
+-- Locks up to row_limit due outbox rows in available_at order, skipping rows another relay is
+-- already dispatching.
+SELECT id, notification_id, payload
+FROM outbox
+WHERE available_at <= now()
+ORDER BY available_at, id
+LIMIT @row_limit
+FOR UPDATE SKIP LOCKED;
+
+-- name: QueueNotifications :many
+-- Moves notifications that are currently in one of from_statuses to queued and records a status
+-- event for each one, in one statement. Notifications in any other status (for example cancelled)
+-- are left untouched and omitted from the returned IDs. Rows are locked in ID order so concurrent
+-- transactions cannot deadlock.
+WITH locked AS (
+    SELECT cur.id, cur.status
+    FROM notifications AS cur
+    WHERE cur.id = ANY(@ids::uuid[]) AND cur.status = ANY(@from_statuses::text[])
+    ORDER BY cur.id
+    FOR UPDATE
+), updated AS (
+    UPDATE notifications AS n
+    SET status     = 'queued',
+        updated_at = now()
+    FROM locked
+    WHERE n.id = locked.id
+    RETURNING n.id, locked.status AS from_status
+), events AS (
+    INSERT INTO notification_events (notification_id, from_status, to_status)
+    SELECT updated.id, updated.from_status, 'queued'
+    FROM updated
+)
+SELECT id FROM updated;
+
+-- name: DeleteOutbox :exec
+-- Deletes outbox rows that have been processed (published, or skipped because the notification was
+-- already cancelled).
+DELETE FROM outbox
+WHERE id = ANY(@ids::bigint[]);

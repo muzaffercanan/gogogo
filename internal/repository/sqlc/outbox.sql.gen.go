@@ -12,6 +12,55 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimDueOutbox = `-- name: ClaimDueOutbox :many
+SELECT id, notification_id, payload
+FROM outbox
+WHERE available_at <= now()
+ORDER BY available_at, id
+LIMIT $1
+FOR UPDATE SKIP LOCKED
+`
+
+type ClaimDueOutboxRow struct {
+	ID             int64
+	NotificationID uuid.UUID
+	Payload        []byte
+}
+
+// Locks up to row_limit due outbox rows in available_at order, skipping rows another relay is
+// already dispatching.
+func (q *Queries) ClaimDueOutbox(ctx context.Context, rowLimit int32) ([]ClaimDueOutboxRow, error) {
+	rows, err := q.db.Query(ctx, claimDueOutbox, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimDueOutboxRow
+	for rows.Next() {
+		var i ClaimDueOutboxRow
+		if err := rows.Scan(&i.ID, &i.NotificationID, &i.Payload); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteOutbox = `-- name: DeleteOutbox :exec
+DELETE FROM outbox
+WHERE id = ANY($1::bigint[])
+`
+
+// Deletes outbox rows that have been processed (published, or skipped because the notification was
+// already cancelled).
+func (q *Queries) DeleteOutbox(ctx context.Context, ids []int64) error {
+	_, err := q.db.Exec(ctx, deleteOutbox, ids)
+	return err
+}
+
 const insertOutbox = `-- name: InsertOutbox :exec
 INSERT INTO outbox (notification_id, payload, available_at)
 VALUES ($1, $2, COALESCE($3::timestamptz, now()))
@@ -39,4 +88,55 @@ SELECT pg_notify('outbox', '')
 func (q *Queries) NotifyOutbox(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, notifyOutbox)
 	return err
+}
+
+const queueNotifications = `-- name: QueueNotifications :many
+WITH locked AS (
+    SELECT cur.id, cur.status
+    FROM notifications AS cur
+    WHERE cur.id = ANY($1::uuid[]) AND cur.status = ANY($2::text[])
+    ORDER BY cur.id
+    FOR UPDATE
+), updated AS (
+    UPDATE notifications AS n
+    SET status     = 'queued',
+        updated_at = now()
+    FROM locked
+    WHERE n.id = locked.id
+    RETURNING n.id, locked.status AS from_status
+), events AS (
+    INSERT INTO notification_events (notification_id, from_status, to_status)
+    SELECT updated.id, updated.from_status, 'queued'
+    FROM updated
+)
+SELECT id FROM updated
+`
+
+type QueueNotificationsParams struct {
+	Ids          []uuid.UUID
+	FromStatuses []string
+}
+
+// Moves notifications that are currently in one of from_statuses to queued and records a status
+// event for each one, in one statement. Notifications in any other status (for example cancelled)
+// are left untouched and omitted from the returned IDs. Rows are locked in ID order so concurrent
+// transactions cannot deadlock.
+func (q *Queries) QueueNotifications(ctx context.Context, arg QueueNotificationsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, queueNotifications, arg.Ids, arg.FromStatuses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

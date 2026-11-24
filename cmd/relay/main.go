@@ -10,12 +10,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/muzaffercanan/gogogo/internal/outbox"
 	"github.com/muzaffercanan/gogogo/internal/platform/config"
 	"github.com/muzaffercanan/gogogo/internal/platform/health"
 	"github.com/muzaffercanan/gogogo/internal/platform/httpserver"
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/platform/ops"
 	"github.com/muzaffercanan/gogogo/internal/queue"
+	"github.com/muzaffercanan/gogogo/internal/repository"
 )
 
 func main() {
@@ -50,6 +52,17 @@ func run() error {
 	defer func() {
 		stop() // also when the HTTP server fails to start
 		<-mqDone
+	}()
+
+	relay := outbox.NewRelay(repository.New(db), queue.NewPublisher(mq), log)
+	relayDone := make(chan struct{})
+	go func() {
+		defer close(relayDone)
+		relay.Run(ctx)
+	}()
+	defer func() {
+		stop()
+		<-relayDone
 	}()
 
 	reg := ops.NewRegistry()
