@@ -13,6 +13,7 @@ require (
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.45.0
+	github.com/testcontainers/testcontainers-go/modules/rabbitmq v0.45.0
 )
 
 require (

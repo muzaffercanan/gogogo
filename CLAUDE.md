@@ -63,6 +63,7 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.
 - `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
 - `internal/testutil/pgtest`: PostgreSQL container for integration tests; one migrated database per test.
+- `internal/testutil/rabbittest`: RabbitMQ container for integration tests; one virtual host per test.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
 - `docs/adr/`: architecture decision records.
 
@@ -74,6 +75,7 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - No mutable package-level state; dependencies are passed in explicitly.
 - Table-driven tests; every bug fix comes with a test that reproduces it.
 - Code that talks to PostgreSQL, RabbitMQ or Redis is tested against real containers, not mocks. Those
-  test files start with `//go:build integration`; database tests use `pgtest.Server.NewDatabase(t)`.
+  test files start with `//go:build integration`; database tests use `pgtest.Server.NewDatabase(t)`, broker
+  tests `rabbittest.Server.NewVHost(t)`.
 - Never edit `*.gen.go` by hand: change the source (spec, SQL) and run `make generate`. Generated code is
   committed; CI fails if it is stale.
