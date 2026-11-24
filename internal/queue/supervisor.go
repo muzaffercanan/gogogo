@@ -105,12 +105,17 @@ func (s *Supervisor) connect(ctx context.Context) (*amqp.Connection, error) {
 	return conn, nil
 }
 
-// backoff returns the delay after the given number of consecutive failures: full jitter over an
-// exponentially growing, capped window.
+// backoff returns the delay after the given number of consecutive failures.
 func (s *Supervisor) backoff(failures int) time.Duration {
-	window := s.maxBackoff
+	return jitteredBackoff(failures, s.minBackoff, s.maxBackoff)
+}
+
+// jitteredBackoff returns rand(0, min(maxBackoff, minBackoff·2^failures)): full jitter over an
+// exponentially growing, capped window.
+func jitteredBackoff(failures int, minBackoff, maxBackoff time.Duration) time.Duration {
+	window := maxBackoff
 	if failures < 32 { // beyond that the shift overflows and the cap applies anyway
-		window = min(s.maxBackoff, s.minBackoff<<failures)
+		window = min(maxBackoff, minBackoff<<failures)
 	}
 	return rand.N(window + 1) //nolint:gosec // G404: jitter needs no cryptographic randomness
 }
