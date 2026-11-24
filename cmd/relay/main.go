@@ -3,20 +3,19 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/muzaffercanan/gogogo/internal/platform/config"
 	"github.com/muzaffercanan/gogogo/internal/platform/health"
 	"github.com/muzaffercanan/gogogo/internal/platform/httpserver"
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/platform/ops"
+	"github.com/muzaffercanan/gogogo/internal/queue"
 )
 
 func main() {
@@ -42,26 +41,22 @@ func run() error {
 	}
 	defer db.Close()
 
-	conn, err := amqp.Dial(cfg.AMQPURL)
-	if err != nil {
-		return fmt.Errorf("connecting to rabbitmq: %w", err)
-	}
-	defer func() { _ = conn.Close() }()
+	mq := queue.NewSupervisor(cfg.AMQPURL, "relay", log)
+	mqDone := make(chan struct{})
+	go func() {
+		defer close(mqDone)
+		mq.Run(ctx)
+	}()
+	defer func() {
+		stop() // also when the HTTP server fails to start
+		<-mqDone
+	}()
 
 	reg := ops.NewRegistry()
 	mux := ops.NewMux(log, reg, map[string]health.Check{
 		"postgres": db.Ping,
-		"rabbitmq": amqpCheck(conn),
+		"rabbitmq": mq.Check,
 	})
 
 	return httpserver.Run(ctx, log, cfg.HTTPAddr, mux, cfg.ShutdownTimeout)
-}
-
-func amqpCheck(conn *amqp.Connection) health.Check {
-	return func(context.Context) error {
-		if conn.IsClosed() {
-			return errors.New("connection closed")
-		}
-		return nil
-	}
 }
