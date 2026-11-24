@@ -18,10 +18,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/api"
+	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
 	"github.com/muzaffercanan/gogogo/internal/provider"
 	"github.com/muzaffercanan/gogogo/internal/queue"
@@ -268,6 +270,14 @@ type notification struct {
 	SentAt            *string `json:"sent_at"`
 }
 
+// deref returns *p, or "" if p is nil.
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 type create struct {
 	Channel   string `json:"channel"`
 	Priority  string `json:"priority"`
@@ -304,6 +314,42 @@ func (s *system) waitForStatus(id, want string, timeout time.Duration) notificat
 		return last.Status == want
 	})
 	return last
+}
+
+// deadLettered takes the messages from the dead-letter queue of channel and returns their message
+// ids: it waits up to 10 s for want of them, then half a second more for any beyond.
+func (s *system) deadLettered(channel domain.Channel, want int) []string {
+	s.t.Helper()
+	conn, err := amqp.Dial(s.vhost)
+	if err != nil {
+		s.t.Fatalf("connecting to the broker: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ch, err := conn.Channel()
+	if err != nil {
+		s.t.Fatalf("opening a channel: %v", err)
+	}
+	name := queue.DeadLetterQueueName(channel)
+	var ids []string
+	take := func() {
+		for {
+			d, ok, err := ch.Get(name, true)
+			if err != nil {
+				s.t.Fatalf("getting from %s: %v", name, err)
+			}
+			if !ok {
+				return
+			}
+			ids = append(ids, d.MessageId)
+		}
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for take(); len(ids) < want && time.Now().Before(deadline); take() {
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+	take()
+	return ids
 }
 
 // waitFor polls cond every 20 ms until it holds, failing the test after timeout.
@@ -377,6 +423,13 @@ func newScriptedProvider(t *testing.T) *scriptedProvider {
 	}))
 	t.Cleanup(p.srv.Close)
 	return p
+}
+
+// script sets the answers to the next requests for recipient.
+func (p *scriptedProvider) script(recipient string, answers ...answer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.scripts[recipient] = answers
 }
 
 // received returns the requests so far whose Idempotency-Key is key, or all of them if key is empty.
