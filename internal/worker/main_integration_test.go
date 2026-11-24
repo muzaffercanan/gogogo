@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
@@ -134,7 +135,12 @@ type harness struct {
 	log      *slog.Logger
 	// rate is the sends per second the worker's limiter allows; 100 unless a test changes it.
 	rate int
-	logs syncBuffer // everything logged, also written to the test output
+	// redisURL is where the worker's limiter finds Redis: a database of its own unless a test puts a
+	// proxy in between.
+	redisURL string
+	reg      *prometheus.Registry
+	metrics  *worker.Metrics // set by startWorker
+	logs     syncBuffer      // everything logged, also written to the test output
 }
 
 // syncBuffer is a bytes.Buffer safe for the concurrent writes of a logger.
@@ -174,7 +180,7 @@ func (h *harness) waitLogged(t *testing.T, parts ...string) {
 
 func newHarness(t *testing.T, answerFor func(int) answer) *harness {
 	t.Helper()
-	h := &harness{db: pg.NewDatabase(t), vhost: mq.NewVHost(t), rate: 100}
+	h := &harness{db: pg.NewDatabase(t), vhost: mq.NewVHost(t), rate: 100, redisURL: rdb.NewURL(t), reg: prometheus.NewRegistry()}
 	h.log = slog.New(slog.NewTextHandler(io.MultiWriter(t.Output(), &h.logs), nil))
 	h.store = repository.New(h.db)
 	h.sup = queue.NewSupervisor(h.vhost, t.Name(), h.log)
@@ -199,7 +205,13 @@ func newHarness(t *testing.T, answerFor func(int) answer) *harness {
 // stop returns once the worker has.
 func (h *harness) startWorker(t *testing.T) (stop func()) {
 	t.Helper()
-	limiter, err := ratelimit.New(rdb.NewClient(t), h.rate)
+	opts, err := redis.ParseURL(h.redisURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := redis.NewClient(opts)
+	t.Cleanup(func() { _ = client.Close() })
+	limiter, err := ratelimit.New(client, h.rate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +221,9 @@ func (h *harness) startWorker(t *testing.T) (stop func()) {
 	}
 	retry := worker.WithJitter(worker.DefaultRetryPolicy(), func(window time.Duration) time.Duration { return window })
 	deliverer := worker.NewDeliverer(h.store, sender, h.pub, retry, h.log)
-	ch, err := worker.NewChannel(domain.ChannelSMS, h.sup, 5, worker.DefaultWeights(), limiter, deliverer, 4, h.log)
+	h.metrics = worker.NewMetrics(h.reg)
+	ch, err := worker.NewChannel(domain.ChannelSMS, h.sup, limiter, deliverer, h.metrics,
+		worker.Options{Prefetch: 5, Concurrency: 4, Weights: worker.DefaultWeights()}, h.log)
 	if err != nil {
 		t.Fatal(err)
 	}

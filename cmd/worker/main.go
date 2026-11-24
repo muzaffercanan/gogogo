@@ -78,11 +78,17 @@ func run() error {
 		<-mqDone
 	}()
 
+	reg := ops.NewRegistry()
+	metrics := worker.NewMetrics(reg)
 	deliverer := worker.NewDeliverer(repository.New(db), sender, queue.NewPublisher(mq), worker.DefaultRetryPolicy(), log)
-	weights := worker.Weights{High: cfg.WeightHigh, Normal: cfg.WeightNormal, Low: cfg.WeightLow}
+	opts := worker.Options{
+		Prefetch:    cfg.Prefetch,
+		Concurrency: cfg.Concurrency,
+		Weights:     worker.Weights{High: cfg.WeightHigh, Normal: cfg.WeightNormal, Low: cfg.WeightLow},
+	}
 	var channels []*worker.Channel
 	for _, c := range queue.Channels() {
-		ch, err := worker.NewChannel(c, mq, cfg.Prefetch, weights, limiter, deliverer, cfg.Concurrency, log)
+		ch, err := worker.NewChannel(c, mq, limiter, deliverer, metrics, opts, log)
 		if err != nil {
 			return fmt.Errorf("setting up the %s channel: %w", c, err)
 		}
@@ -97,11 +103,11 @@ func run() error {
 		running.Wait()
 	}()
 
-	reg := ops.NewRegistry()
 	mux := ops.NewMux(log, reg, map[string]health.Check{
-		"postgres": db.Ping,
-		"rabbitmq": mq.Check,
-		"redis":    func(ctx context.Context) error { return rdb.Ping(ctx).Err() },
+		"postgres":  db.Ping,
+		"rabbitmq":  mq.Check,
+		"redis":     func(ctx context.Context) error { return rdb.Ping(ctx).Err() },
+		"ratelimit": metrics.CheckLimiter,
 	})
 
 	return httpserver.Run(ctx, log, cfg.HTTPAddr, mux, cfg.ShutdownTimeout)
