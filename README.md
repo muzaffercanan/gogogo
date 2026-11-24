@@ -390,9 +390,17 @@ channels.
 - **Slow runs (2, 4, 6).** The same burst sometimes runs about three times slower everywhere. Batches take
   ~3 s to accept, each relay publish and commit takes 0.65–1.9 s instead of ~0.1 s, and the workers'
   sending transitions slow down with it. Nothing failed, but the backlog reached the queues late, so
-  the priorities were sent closer together. The API and the relay share only PostgreSQL. All the slow
-  steps are commits, and slow runs alternated with fast ones on the same data, so the likely cause is
-  disk latency inside the Docker Desktop VM rather than the service. This was not measured on Linux.
+  the priorities were sent closer together. Measuring five more bursts with `track_wal_io_timing` on
+  (each writing ~350–400 MB across ~10 000–13 000 WAL syncs, with zero PostgreSQL checkpoints during
+  the slow runs) traced this to storage stalls on the host: on fast runs (99.6–100/s) PostgreSQL
+  `wal_sync` averaged 1.8–2.2 ms (22–25 s total), RabbitMQ quorum commit latency stayed up to 42 ms
+  and VM disk flushes averaged 1.1–1.3 ms; on slow runs (62.4–62.5/s) `wal_sync` averaged 4.4–4.5 ms
+  (44–46 s total, exceeding the 33 s rate-limit floor and piling backends onto `LWLock/WALWrite`),
+  RabbitMQ quorum commit latency rose to 145–184 ms and VM disk flushes averaged 2.4 ms. A 1 s `fsync`
+  probe running directly on the Windows host outside Docker jumped in lockstep at the exact same second
+  (from ~1 ms to 10–30 ms, with spikes to 150–507 ms) and recovered ~55 s later, pointing to
+  sustained-write stalls on the host's nearly full QLC NVMe SSD (~95% full) rather than the service,
+  PostgreSQL or RabbitMQ. This was not repeated on a separate Linux host.
 - **Prefetch.** With the earlier default `WORKER_PREFETCH=5`, the same burst drained at 72/s per
   channel: 100/s while all three priorities had messages, then about 78/s and 30/s. A message stays
   unacknowledged until its `queued → sending` transition commits, so each priority sends at most
