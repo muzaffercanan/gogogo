@@ -1,6 +1,6 @@
 # 0009. Retry policy, dead-lettering and circuit breaking
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended by [0014](0014-provider-response-classification.md): malformed 2xx answers, 408 and the Retry-After cap.
 - **Date:** 2026-11-23
 
 ## Context
