@@ -140,7 +140,9 @@ type harness struct {
 	redisURL string
 	reg      *prometheus.Registry
 	metrics  *worker.Metrics // set by startWorker
-	logs     syncBuffer      // everything logged, also written to the test output
+	// opts tune the worker; a test may change them before startWorker.
+	opts worker.Options
+	logs syncBuffer // everything logged, also written to the test output
 }
 
 // syncBuffer is a bytes.Buffer safe for the concurrent writes of a logger.
@@ -180,7 +182,8 @@ func (h *harness) waitLogged(t *testing.T, parts ...string) {
 
 func newHarness(t *testing.T, answerFor func(int) answer) *harness {
 	t.Helper()
-	h := &harness{db: pg.NewDatabase(t), vhost: mq.NewVHost(t), rate: 100, redisURL: rdb.NewURL(t), reg: prometheus.NewRegistry()}
+	h := &harness{db: pg.NewDatabase(t), vhost: mq.NewVHost(t), rate: 100, redisURL: rdb.NewURL(t), reg: prometheus.NewRegistry(),
+		opts: worker.Options{Prefetch: 5, Concurrency: 4, Weights: worker.DefaultWeights()}}
 	h.log = slog.New(slog.NewTextHandler(io.MultiWriter(t.Output(), &h.logs), nil))
 	h.store = repository.New(h.db)
 	h.sup = queue.NewSupervisor(h.vhost, t.Name(), h.log)
@@ -222,8 +225,7 @@ func (h *harness) startWorker(t *testing.T) (stop func()) {
 	retry := worker.WithJitter(worker.DefaultRetryPolicy(), func(window time.Duration) time.Duration { return window })
 	deliverer := worker.NewDeliverer(h.store, sender, h.pub, retry, h.log)
 	h.metrics = worker.NewMetrics(h.reg)
-	ch, err := worker.NewChannel(domain.ChannelSMS, h.sup, limiter, deliverer, h.metrics,
-		worker.Options{Prefetch: 5, Concurrency: 4, Weights: worker.DefaultWeights()}, h.log)
+	ch, err := worker.NewChannel(domain.ChannelSMS, h.sup, limiter, deliverer, h.metrics, h.opts, h.log)
 	if err != nil {
 		t.Fatal(err)
 	}

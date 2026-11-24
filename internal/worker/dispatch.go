@@ -23,26 +23,38 @@ const (
 	limiterMaxBackoff = 5 * time.Second
 )
 
-// Dispatcher delivers the notifications of one channel. It picks the next delivery (K-36), waits for a
-// free sender, then for a rate-limit token, and hands the delivery to that sender; taking the sender
-// first means a send starts as soon as its token is granted (K-39).
+// Dispatcher delivers the notifications of one channel. It picks the next delivery (K-36), waits until
+// the circuit breaker lets it through (K-42), then for a free sender, then for a rate-limit token, and
+// hands the delivery to that sender; taking the sender first means a send starts as soon as its token
+// is granted (K-39). While the breaker is open it picks nothing more: the deliveries buffered so far
+// stay unacknowledged with the worker.
 type Dispatcher struct {
 	channel   domain.Channel
 	picker    *Picker
 	limiter   Limiter
 	deliverer *Deliverer
 	metrics   *Metrics
+	breaker   *breaker
 	senders   chan struct{} // one slot per send in flight
 	log       *slog.Logger
 
 	minBackoff, maxBackoff time.Duration
 }
 
-// NewDispatcher returns a dispatcher for channel c that runs at most concurrency sends at once and
-// reports to metrics.
-func NewDispatcher(c domain.Channel, picker *Picker, limiter Limiter, deliverer *Deliverer, metrics *Metrics, concurrency int, log *slog.Logger) (*Dispatcher, error) {
-	if concurrency < 1 {
-		return nil, fmt.Errorf("concurrency %d is below 1", concurrency)
+// NewDispatcher returns a dispatcher for channel c that runs at most opts.Concurrency sends at once
+// behind a circuit breaker with opts.Breaker, and reports to metrics.
+func NewDispatcher(c domain.Channel, picker *Picker, limiter Limiter, deliverer *Deliverer, metrics *Metrics, opts Options, log *slog.Logger) (*Dispatcher, error) {
+	if opts.Concurrency < 1 {
+		return nil, fmt.Errorf("concurrency %d is below 1", opts.Concurrency)
+	}
+	log = log.With("channel", string(c))
+	settings := opts.Breaker
+	if settings == (BreakerSettings{}) {
+		settings = DefaultBreakerSettings()
+	}
+	b, err := newBreaker(c, settings, metrics, log)
+	if err != nil {
+		return nil, err
 	}
 	return &Dispatcher{
 		channel:    c,
@@ -50,8 +62,9 @@ func NewDispatcher(c domain.Channel, picker *Picker, limiter Limiter, deliverer 
 		limiter:    limiter,
 		deliverer:  deliverer,
 		metrics:    metrics,
-		senders:    make(chan struct{}, concurrency),
-		log:        log.With("channel", string(c)),
+		breaker:    b,
+		senders:    make(chan struct{}, opts.Concurrency),
+		log:        log,
 		minBackoff: limiterMinBackoff,
 		maxBackoff: limiterMaxBackoff,
 	}, nil
@@ -67,18 +80,24 @@ func (dp *Dispatcher) Run(ctx context.Context) {
 		if err != nil {
 			return
 		}
+		done, ok := dp.breaker.allow(ctx)
+		if !ok {
+			return
+		}
 		select {
 		case dp.senders <- struct{}{}:
 		case <-ctx.Done():
+			done(OutcomeAbandoned)
 			return
 		}
 		if !dp.token(ctx) {
 			<-dp.senders
+			done(OutcomeAbandoned)
 			return
 		}
 		inFlight.Go(func() {
 			defer func() { <-dp.senders }()
-			dp.deliverer.Deliver(ctx, d)
+			done(dp.deliverer.Deliver(ctx, d))
 		})
 	}
 }
@@ -120,6 +139,8 @@ type Options struct {
 	Concurrency int
 	// Weights are the priorities' shares (ADR 0002).
 	Weights Weights
+	// Breaker tunes the circuit breaker; the zero value means DefaultBreakerSettings.
+	Breaker BreakerSettings
 }
 
 // Channel bundles the consumer and dispatcher of one delivery channel.
@@ -139,7 +160,7 @@ func NewChannel(c domain.Channel, sup *queue.Supervisor, limiter Limiter, delive
 	if err != nil {
 		return nil, err
 	}
-	dispatcher, err := NewDispatcher(c, picker, limiter, deliverer, metrics, opts.Concurrency, log)
+	dispatcher, err := NewDispatcher(c, picker, limiter, deliverer, metrics, opts, log)
 	if err != nil {
 		return nil, err
 	}

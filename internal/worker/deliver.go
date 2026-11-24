@@ -44,9 +44,12 @@ const (
 	OutcomeSent Outcome = "sent"
 	// OutcomeRetry: the attempt failed with a retryable error; the notification is retry_scheduled.
 	OutcomeRetry Outcome = "retry_scheduled"
-	// OutcomeFailed: the attempt failed for good, or was the last one; the notification is
-	// permanently_failed and went to the dead-letter queue.
+	// OutcomeFailed: the provider refused the notification for good; it is permanently_failed and
+	// went to the dead-letter queue.
 	OutcomeFailed Outcome = "permanently_failed"
+	// OutcomeExhausted: the last attempt failed with a retryable error; the notification is
+	// permanently_failed and went to the dead-letter queue.
+	OutcomeExhausted Outcome = "attempts_exhausted"
 	// OutcomeSkipped: the notification was not queued (cancelled, or a duplicate message), so nothing
 	// was sent.
 	OutcomeSkipped Outcome = "skipped"
@@ -181,9 +184,9 @@ func (dl *Deliverer) retryLater(ctx context.Context, log *slog.Logger, n domain.
 }
 
 func (dl *Deliverer) fail(ctx context.Context, log *slog.Logger, d queue.Delivery, n domain.Notification, pe *provider.Error) Outcome {
-	reason := reasonPermanent
+	reason, outcome := reasonPermanent, OutcomeFailed
 	if pe.Retryable {
-		reason = reasonExhausted
+		reason, outcome = reasonExhausted, OutcomeExhausted
 	}
 	if err := dl.write(ctx, outcomeTimeout, func(ctx context.Context) error {
 		_, err := dl.store.TransitionNotification(ctx, repository.Transition{
@@ -210,7 +213,7 @@ func (dl *Deliverer) fail(ctx context.Context, log *slog.Logger, d queue.Deliver
 	}); err != nil {
 		log.WarnContext(ctx, "could not publish the failed delivery to the dead-letter queue", "error", err)
 	}
-	return OutcomeFailed
+	return outcome
 }
 
 func (dl *Deliverer) abandon(ctx context.Context, log *slog.Logger, status string, err error) Outcome {

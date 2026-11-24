@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sony/gobreaker/v2"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/queue"
@@ -18,6 +19,7 @@ import (
 type Metrics struct {
 	limiterDown   *prometheus.GaugeVec
 	limiterErrors *prometheus.CounterVec
+	breaker       *prometheus.GaugeVec
 
 	stopped map[domain.Channel]*atomic.Bool // fixed at construction: one per channel
 }
@@ -25,6 +27,7 @@ type Metrics struct {
 // NewMetrics registers the worker's metrics with reg:
 //   - ratelimit_unavailable{channel}
 //   - ratelimit_errors_total{channel}
+//   - circuit_breaker_state{channel}
 //
 // Every channel's series starts at zero.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -37,12 +40,17 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "ratelimit_errors_total",
 			Help: "Send slot reservations that failed because the rate limiter could not be reached.",
 		}, []string{"channel"}),
+		breaker: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "circuit_breaker_state",
+			Help: "State of the channel's circuit breaker: 0 closed, 1 half-open (one probe goes through), 2 open (sending paused).",
+		}, []string{"channel"}),
 		stopped: map[domain.Channel]*atomic.Bool{},
 	}
-	reg.MustRegister(m.limiterDown, m.limiterErrors)
+	reg.MustRegister(m.limiterDown, m.limiterErrors, m.breaker)
 	for _, c := range queue.Channels() {
 		m.limiterDown.WithLabelValues(string(c))
 		m.limiterErrors.WithLabelValues(string(c))
+		m.breaker.WithLabelValues(string(c))
 		m.stopped[c] = &atomic.Bool{}
 	}
 	return m
@@ -63,6 +71,11 @@ func (m *Metrics) limiterRecovered(c domain.Channel) {
 	if s, ok := m.stopped[c]; ok && s.Swap(false) {
 		m.limiterDown.WithLabelValues(string(c)).Set(0)
 	}
+}
+
+// breakerState records the state channel c's circuit breaker moved to.
+func (m *Metrics) breakerState(c domain.Channel, s gobreaker.State) {
+	m.breaker.WithLabelValues(string(c)).Set(float64(s)) // gobreaker numbers them closed 0, half-open 1, open 2
 }
 
 // CheckLimiter is a readiness check: it fails while a channel sends nothing because the rate limiter
