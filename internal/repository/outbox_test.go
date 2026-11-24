@@ -413,7 +413,13 @@ func TestCountOutboxBacklogSplitsDueAndScheduledRows(t *testing.T) {
 		t.Fatalf("CountOutboxBacklog on an empty outbox = %+v, %v; want zero counts", got, err)
 	}
 
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	// CountOutboxBacklog compares available_at with the database clock, which can be more than a second
+	// away from this process's clock (Docker Desktop runs PostgreSQL in a VM), so the rows' times are
+	// taken from the database clock.
+	var now time.Time
+	if err := db.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		t.Fatalf("reading the database clock: %v", err)
+	}
 	createWithAvailableAt(ctx, t, store, db, domain.StatusPending, now.Add(-time.Minute), nil)
 	createWithAvailableAt(ctx, t, store, db, domain.StatusRetryScheduled, now.Add(-time.Second), nil)
 	createWithAvailableAt(ctx, t, store, db, domain.StatusPending, now.Add(time.Hour), nil)
