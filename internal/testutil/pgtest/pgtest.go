@@ -22,6 +22,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/muzaffercanan/gogogo/internal/testutil/tcretry"
 )
 
 const (
@@ -45,7 +47,7 @@ type Server struct {
 //	func TestMain(m *testing.M) { os.Exit(pgtest.Main(m, &pg)) }
 func Main(m *testing.M, srv **Server) int {
 	ctx := context.Background()
-	s, err := Start(ctx)
+	s, err := tcretry.Start(ctx, Start)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgtest: %v\n", err)
 		return 1
