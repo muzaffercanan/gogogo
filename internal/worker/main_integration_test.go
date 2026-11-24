@@ -223,8 +223,8 @@ func (h *harness) startWorker(t *testing.T) (stop func()) {
 		t.Fatal(err)
 	}
 	retry := worker.WithJitter(worker.DefaultRetryPolicy(), func(window time.Duration) time.Duration { return window })
-	deliverer := worker.NewDeliverer(h.store, sender, h.pub, retry, h.log)
 	h.metrics = worker.NewMetrics(h.reg)
+	deliverer := worker.NewDeliverer(h.store, sender, h.pub, retry, h.metrics, h.log)
 	ch, err := worker.NewChannel(domain.ChannelSMS, h.sup, limiter, deliverer, h.metrics, h.opts, h.log)
 	if err != nil {
 		t.Fatal(err)

@@ -84,13 +84,14 @@ type Deliverer struct {
 	sender      Sender
 	deadLetters DeadLetters
 	retry       RetryPolicy
+	metrics     *Metrics
 	log         *slog.Logger
 }
 
 // NewDeliverer returns a deliverer that writes through store, sends through sender, dead-letters
-// through deadLetters and spaces retries with retry.
-func NewDeliverer(store Store, sender Sender, deadLetters DeadLetters, retry RetryPolicy, log *slog.Logger) *Deliverer {
-	return &Deliverer{store: store, sender: sender, deadLetters: deadLetters, retry: retry, log: log}
+// through deadLetters, spaces retries with retry and reports to metrics.
+func NewDeliverer(store Store, sender Sender, deadLetters DeadLetters, retry RetryPolicy, metrics *Metrics, log *slog.Logger) *Deliverer {
+	return &Deliverer{store: store, sender: sender, deadLetters: deadLetters, retry: retry, metrics: metrics, log: log}
 }
 
 // Deliver delivers the notification of d. Until it has moved the notification to sending it gives up
@@ -104,6 +105,7 @@ func (dl *Deliverer) Deliver(ctx context.Context, d queue.Delivery) Outcome {
 	if err != nil {
 		log.WarnContext(ctx, "rejecting a message that names no notification", "error", err)
 		dl.settle(ctx, log, d.Reject())
+		dl.metrics.skippedDelivery(d.Channel, skipInvalidMessage)
 		return OutcomeRejected
 	}
 
@@ -118,11 +120,13 @@ func (dl *Deliverer) Deliver(ctx context.Context, d queue.Delivery) Outcome {
 	if final(err) {
 		// Cancelled, sent already (a duplicate message), or unknown: nothing to send.
 		dl.settle(ctx, log, d.Ack())
+		dl.metrics.skippedDelivery(d.Channel, skipNotQueued)
 		log.InfoContext(ctx, "skipped a notification that is not queued", "reason", err.Error())
 		return OutcomeSkipped
 	}
 	if err != nil {
 		log.WarnContext(ctx, "could not start the delivery; the message goes back to its queue", "error", err)
+		dl.metrics.skippedDelivery(d.Channel, skipNotStarted)
 		return OutcomeAbandoned
 	}
 	// The notification is sending now, so a redelivery of the message would be skipped, and the
@@ -130,6 +134,7 @@ func (dl *Deliverer) Deliver(ctx context.Context, d queue.Delivery) Outcome {
 	dl.settle(ctx, log, d.Ack())
 
 	ctx = context.WithoutCancel(ctx)
+	start := time.Now()
 	accepted, sendErr := dl.sender.Send(ctx, provider.Message{
 		NotificationID: n.ID.String(),
 		Channel:        n.Channel,
@@ -137,6 +142,7 @@ func (dl *Deliverer) Deliver(ctx context.Context, d queue.Delivery) Outcome {
 		Content:        n.Content,
 		CorrelationID:  n.CorrelationID,
 	})
+	dl.metrics.providerCall(n.Channel, time.Since(start))
 	if sendErr == nil {
 		return dl.sent(ctx, log, n, accepted)
 	}
@@ -153,15 +159,18 @@ func (dl *Deliverer) Deliver(ctx context.Context, d queue.Delivery) Outcome {
 }
 
 func (dl *Deliverer) sent(ctx context.Context, log *slog.Logger, n domain.Notification, a provider.Accepted) Outcome {
+	var row domain.Notification
 	if err := dl.write(ctx, outcomeTimeout, func(ctx context.Context) error {
-		_, err := dl.store.TransitionNotification(ctx, repository.Transition{
+		var err error
+		row, err = dl.store.TransitionNotification(ctx, repository.Transition{
 			ID: n.ID, From: []domain.Status{domain.StatusSending}, To: domain.StatusSent,
 			ProviderMessageID: a.MessageID, Reason: reasonAccepted,
 		})
 		return err
 	}); err != nil {
-		return dl.abandon(ctx, log, "sent", err)
+		return dl.abandon(ctx, log, n.Channel, "sent", err)
 	}
+	dl.metrics.delivered(row, a.Malformed)
 	if a.Malformed {
 		log.WarnContext(ctx, "notification sent; the provider's answer had no message id", "status", a.StatusCode, "attempt", n.Attempts)
 	} else {
@@ -176,8 +185,9 @@ func (dl *Deliverer) retryLater(ctx context.Context, log *slog.Logger, n domain.
 		_, err := dl.store.ScheduleRetry(ctx, repository.Retry{ID: n.ID, Delay: delay, LastError: pe.Reason, Reason: reasonRetryable})
 		return err
 	}); err != nil {
-		return dl.abandon(ctx, log, "retry_scheduled", err)
+		return dl.abandon(ctx, log, n.Channel, "retry_scheduled", err)
 	}
+	dl.metrics.retried(n.Channel, pe)
 	log.InfoContext(ctx, "delivery failed; retry scheduled", "error", pe.Reason, "attempt", n.Attempts,
 		"max_attempts", n.MaxAttempts, "retry_in_ms", delay.Milliseconds())
 	return OutcomeRetry
@@ -195,8 +205,9 @@ func (dl *Deliverer) fail(ctx context.Context, log *slog.Logger, d queue.Deliver
 		})
 		return err
 	}); err != nil {
-		return dl.abandon(ctx, log, "permanently_failed", err)
+		return dl.abandon(ctx, log, n.Channel, "permanently_failed", err)
 	}
+	dl.metrics.failedForGood(n.Channel)
 	log.WarnContext(ctx, "delivery failed for good", "error", pe.Reason, "reason", reason, "attempt", n.Attempts,
 		"max_attempts", n.MaxAttempts)
 
@@ -216,7 +227,8 @@ func (dl *Deliverer) fail(ctx context.Context, log *slog.Logger, d queue.Deliver
 	return outcome
 }
 
-func (dl *Deliverer) abandon(ctx context.Context, log *slog.Logger, status string, err error) Outcome {
+func (dl *Deliverer) abandon(ctx context.Context, log *slog.Logger, c domain.Channel, status string, err error) Outcome {
+	dl.metrics.outcomeNotRecorded(c)
 	if final(err) {
 		// Someone else moved the notification on (the reaper, after its lease expired).
 		log.WarnContext(ctx, "could not record the outcome: the notification is no longer sending", "outcome", status, "error", err)

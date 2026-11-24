@@ -107,8 +107,9 @@ func (dp *Dispatcher) Run(ctx context.Context) {
 // ratelimit_unavailable is 1. It reports false if ctx ended first.
 func (dp *Dispatcher) token(ctx context.Context) bool {
 	for failures := 0; ; failures++ {
-		_, err := dp.limiter.Wait(ctx, dp.channel)
+		waited, err := dp.limiter.Wait(ctx, dp.channel)
 		if err == nil {
+			dp.metrics.waitedForSlot(dp.channel, waited)
 			dp.metrics.limiterRecovered(dp.channel)
 			if failures > 0 {
 				dp.log.InfoContext(ctx, "rate limiter reachable again; sending resumes")

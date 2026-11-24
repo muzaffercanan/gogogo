@@ -80,7 +80,8 @@ func run() error {
 
 	reg := ops.NewRegistry()
 	metrics := worker.NewMetrics(reg)
-	deliverer := worker.NewDeliverer(repository.New(db), sender, queue.NewPublisher(mq), worker.DefaultRetryPolicy(), log)
+	reg.MustRegister(queue.NewDepthCollector(mq, log))
+	deliverer := worker.NewDeliverer(repository.New(db), sender, queue.NewPublisher(mq), worker.DefaultRetryPolicy(), metrics, log)
 	opts := worker.Options{
 		Prefetch:    cfg.Prefetch,
 		Concurrency: cfg.Concurrency,

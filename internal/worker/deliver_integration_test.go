@@ -39,6 +39,21 @@ func TestWorkerDeliversAQueuedNotificationAndRecordsItAsSent(t *testing.T) {
 	}
 	ch := h.channel(t)
 	assertAcknowledged(t, ch, stop)
+	for _, m := range []struct {
+		name   string
+		labels []string
+		want   float64
+	}{
+		{name: "notifications_sent_total", want: 1},
+		{name: "notifications_failed_total", labels: []string{"final", "false"}, want: 0},
+		{name: "provider_request_duration_seconds", want: 1},
+		{name: "notification_e2e_latency_seconds", labels: []string{"priority", "high"}, want: 1},
+		{name: "ratelimit_wait_seconds", want: 1},
+	} {
+		if got := metricWith(t, h.reg, m.name, m.labels...); got != m.want {
+			t.Errorf("%s%v = %v, want %v", m.name, m.labels, got, m.want)
+		}
+	}
 }
 
 func TestWorkerSchedulesARetryAfterARetryableFailure(t *testing.T) {
@@ -63,6 +78,15 @@ func TestWorkerSchedulesARetryAfterARetryableFailure(t *testing.T) {
 	if depth := queueDepth(t, h.channel(t), "sms.dlq"); depth != 0 {
 		t.Errorf("sms.dlq holds %d messages, want none", depth)
 	}
+	if got := metricWith(t, h.reg, "notifications_failed_total", "final", "false"); got != 1 {
+		t.Errorf("notifications_failed_total{final=false} = %v, want 1", got)
+	}
+	if got := metricWith(t, h.reg, "retries_total", "reason", "5xx"); got != 1 {
+		t.Errorf("retries_total{reason=5xx} = %v, want 1", got)
+	}
+	if got := metricWith(t, h.reg, "notifications_sent_total"); got != 0 {
+		t.Errorf("notifications_sent_total = %v, want 0", got)
+	}
 }
 
 func TestWorkerFailsARejectedNotificationAndDeadLettersIt(t *testing.T) {
@@ -82,6 +106,9 @@ func TestWorkerFailsARejectedNotificationAndDeadLettersIt(t *testing.T) {
 	}
 	if _, ok := h.outboxDue(t, n.ID); ok {
 		t.Error("a permanently failed notification has an outbox row")
+	}
+	if got := metricWith(t, h.reg, "notifications_failed_total", "final", "true"); got != 1 {
+		t.Errorf("notifications_failed_total{final=true} = %v, want 1", got)
 	}
 	assertAcknowledged(t, ch, stop)
 }
@@ -153,6 +180,12 @@ func TestWorkerSkipsANotificationCancelledAfterItWasQueued(t *testing.T) {
 	if got, _ := h.store.GetNotification(t.Context(), n.ID); got.Status != domain.StatusCancelled {
 		t.Errorf("status %s, want cancelled", got.Status)
 	}
+	if got := metricWith(t, h.reg, "deliveries_skipped_total", "reason", "not_queued"); got != 1 {
+		t.Errorf("deliveries_skipped_total{reason=not_queued} = %v, want 1", got)
+	}
+	if got := metricWith(t, h.reg, "provider_request_duration_seconds"); got != 0 {
+		t.Errorf("provider_request_duration_seconds has %v samples for a skipped delivery, want 0", got)
+	}
 }
 
 func TestWorkerSendsADuplicateMessageOnce(t *testing.T) {
@@ -184,6 +217,12 @@ func TestWorkerCountsAnAcceptanceWithoutAMessageIDAsSent(t *testing.T) {
 	if got := h.waitStatus(t, n.ID, domain.StatusSent); got.ProviderMessageID != "" {
 		t.Errorf("provider message id %q, want none", got.ProviderMessageID)
 	}
+	if got := metricWith(t, h.reg, "provider_malformed_acceptances_total"); got != 1 {
+		t.Errorf("provider_malformed_acceptances_total = %v, want 1", got)
+	}
+	if got := metricWith(t, h.reg, "notifications_sent_total"); got != 1 {
+		t.Errorf("notifications_sent_total = %v, want 1", got)
+	}
 }
 
 func TestWorkerDeadLettersAMessageThatNamesNoNotification(t *testing.T) {
@@ -197,6 +236,9 @@ func TestWorkerDeadLettersAMessageThatNamesNoNotification(t *testing.T) {
 
 	if d := deadLetter(t, h.channel(t)); d.MessageId != "not-a-uuid" {
 		t.Errorf("dead letter %q, want not-a-uuid", d.MessageId)
+	}
+	if got := metricWith(t, h.reg, "deliveries_skipped_total", "reason", "invalid_message"); got != 1 {
+		t.Errorf("deliveries_skipped_total{reason=invalid_message} = %v, want 1", got)
 	}
 	if reqs := h.provider.got(); len(reqs) != 0 {
 		t.Errorf("provider got %d requests, want none", len(reqs))
@@ -254,5 +296,35 @@ func TestWorkerFinishesTheSendsInFlightWhenItStops(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(h.statuses(t, n.ID), ","), "sending,sent") {
 		t.Errorf("status events %v, want sending then sent", h.statuses(t, n.ID))
+	}
+}
+
+func TestWorkerMeasuresLatencyFromWhenANotificationWasDue(t *testing.T) {
+	h := newHarness(t, always(accepted("m-10")))
+	// Scheduled 1.5 s ahead by the database clock, the clock the relay and the latency use.
+	var dbNow time.Time
+	if err := h.db.QueryRow(t.Context(), `SELECT now()`).Scan(&dbNow); err != nil {
+		t.Fatal(err)
+	}
+	due := dbNow.Add(1500 * time.Millisecond)
+	n := h.create(t, func(nn *domain.NewNotification) { nn.ScheduledAt = &due })
+	h.startWorker(t)
+	waitFor(t, "the scheduled notification is dispatched", func() bool {
+		claimed, _, err := h.relay.Once(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return claimed == 1
+	})
+	got := h.waitStatus(t, n.ID, domain.StatusSent)
+
+	sinceCreated := got.SentAt.Sub(got.CreatedAt)
+	latency := histogramSum(t, h.reg, "notification_e2e_latency_seconds", "priority", "high")
+	if sinceCreated < 1500*time.Millisecond {
+		t.Fatalf("sent %v after creation, before it was due", sinceCreated)
+	}
+	if want := got.SentAt.Sub(due).Seconds(); latency > want+0.001 || latency < want-0.001 {
+		t.Errorf("notification_e2e_latency_seconds recorded %.3fs, want %.3fs from the scheduled time (not %.3fs from creation)",
+			latency, want, sinceCreated.Seconds())
 	}
 }

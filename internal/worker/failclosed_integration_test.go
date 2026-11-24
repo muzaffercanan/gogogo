@@ -98,6 +98,38 @@ func (p *tcpProxy) set(up bool) {
 // metric returns the value of the series of family name with label channel=sms, or -1 if there is none.
 func metric(t *testing.T, reg *prometheus.Registry, name string) float64 {
 	t.Helper()
+	return metricWith(t, reg, name)
+}
+
+// metricWith returns the series of family name with channel=sms and the label pairs in labels: a
+// gauge's or counter's value, or a histogram's sample count; -1 if there is no such series.
+func metricWith(t *testing.T, reg *prometheus.Registry, name string, labels ...string) float64 {
+	t.Helper()
+	if m := series(t, reg, name, labels...); m != nil {
+		switch {
+		case m.GetGauge() != nil:
+			return m.GetGauge().GetValue()
+		case m.GetCounter() != nil:
+			return m.GetCounter().GetValue()
+		case m.GetHistogram() != nil:
+			return float64(m.GetHistogram().GetSampleCount())
+		}
+	}
+	return -1
+}
+
+// histogramSum returns the sum of the histogram series of family name with channel=sms and labels.
+func histogramSum(t *testing.T, reg *prometheus.Registry, name string, labels ...string) float64 {
+	t.Helper()
+	m := series(t, reg, name, labels...)
+	if m == nil || m.GetHistogram() == nil {
+		t.Fatalf("no histogram %s%v", name, labels)
+	}
+	return m.GetHistogram().GetSampleSum()
+}
+
+func series(t *testing.T, reg *prometheus.Registry, name string, labels ...string) *dto.Metric {
+	t.Helper()
 	families, err := reg.Gather()
 	if err != nil {
 		t.Fatal(err)
@@ -106,18 +138,20 @@ func metric(t *testing.T, reg *prometheus.Registry, name string) float64 {
 		if f.GetName() != name {
 			continue
 		}
+	next:
 		for _, m := range f.GetMetric() {
-			if hasLabel(m, "channel", "sms") {
-				switch {
-				case m.GetGauge() != nil:
-					return m.GetGauge().GetValue()
-				case m.GetCounter() != nil:
-					return m.GetCounter().GetValue()
+			if !hasLabel(m, "channel", "sms") {
+				continue
+			}
+			for i := 0; i+1 < len(labels); i += 2 {
+				if !hasLabel(m, labels[i], labels[i+1]) {
+					continue next
 				}
 			}
+			return m
 		}
 	}
-	return -1
+	return nil
 }
 
 func hasLabel(m *dto.Metric, name, value string) bool {
