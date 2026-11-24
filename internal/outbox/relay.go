@@ -121,8 +121,12 @@ func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 		return 0, 0, err
 	}
 	r.metrics.dispatched(dispatched, claimed, time.Since(start))
-	for _, it := range dispatched {
-		r.log.InfoContext(logging.WithCorrelationID(ctx, it.CorrelationID), "notification queued",
+	for i, it := range dispatched {
+		logCtx := logging.WithCorrelationID(ctx, it.CorrelationID)
+		if i < len(spans) {
+			logCtx = trace.ContextWithSpan(logCtx, spans[i]) // so the record names the publish span
+		}
+		r.log.InfoContext(logCtx, "notification queued",
 			"notification_id", it.NotificationID, "channel", it.Channel, "priority", it.Priority)
 	}
 	return claimed, published, nil

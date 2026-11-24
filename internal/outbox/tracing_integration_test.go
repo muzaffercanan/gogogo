@@ -3,9 +3,13 @@
 package outbox_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -16,6 +20,7 @@ import (
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
+	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 	"github.com/muzaffercanan/gogogo/internal/repository"
@@ -57,7 +62,8 @@ func TestRelayPublishesEachNotificationInItsTrace(t *testing.T) {
 	store := repository.New(pg.NewDatabase(t))
 	pub, vhost := connectedPublisher(t)
 	spans := tracetest.NewSpanRecorder()
-	relay := outbox.NewRelay(store, pub, discardMetrics(), sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)), slog.New(slog.NewTextHandler(t.Output(), nil)))
+	var logs bytes.Buffer
+	relay := outbox.NewRelay(store, pub, discardMetrics(), sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)), logging.New(io.MultiWriter(t.Output(), &logs), "info"))
 
 	traced := createTraced(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, apiTraceParent)
 	untraced := createTraced(ctx, t, store, domain.ChannelEmail, domain.PriorityLow, "")
@@ -96,7 +102,31 @@ func TestRelayPublishesEachNotificationInItsTrace(t *testing.T) {
 		if h, want := queue.TraceParent(d.Headers), traceParentOf(s.SpanContext()); h != want {
 			t.Errorf("message of %s carries traceparent %q, want its publish span's %q", tt.id, h, want)
 		}
+		if rec := queuedRecord(t, logs.String(), tt.id); rec.TraceID != s.SpanContext().TraceID().String() || rec.SpanID != s.SpanContext().SpanID().String() {
+			t.Errorf("notification queued record of %s names trace %q and span %q, want its publish span %s of trace %s",
+				tt.id, rec.TraceID, rec.SpanID, s.SpanContext().SpanID(), s.SpanContext().TraceID())
+		}
 	}
+}
+
+type logRecord struct {
+	Msg            string `json:"msg"`
+	NotificationID string `json:"notification_id"`
+	TraceID        string `json:"trace_id"`
+	SpanID         string `json:"span_id"`
+}
+
+// queuedRecord returns the "notification queued" log record of notification id.
+func queuedRecord(t *testing.T, logs string, id uuid.UUID) logRecord {
+	t.Helper()
+	for line := range strings.Lines(logs) {
+		var rec logRecord // fresh per line: Unmarshal keeps fields a line does not have
+		if err := json.Unmarshal([]byte(line), &rec); err == nil && rec.Msg == "notification queued" && rec.NotificationID == id.String() {
+			return rec
+		}
+	}
+	t.Fatalf("no notification queued record for %s in %s", id, logs)
+	return logRecord{}
 }
 
 func TestRelayFailsThePublishSpansOfAStepThatRolledBack(t *testing.T) {
