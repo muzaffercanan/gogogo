@@ -21,7 +21,9 @@ behaviours instead of checking them.
   test gets its own database cloned from it (`internal/testutil/pgtest`), so tests are isolated and can run
   in parallel without truncating tables. The migrations are run as plain SQL files rather than through
   golang-migrate.
-- Helpers for RabbitMQ and Redis follow the same pattern when the code that needs them is written.
+- RabbitMQ and Redis follow the same pattern: one container per test binary, and every test gets its own
+  virtual host (`internal/testutil/rabbittest`) or logical database (`internal/testutil/redistest`).
+  Logic that needs a controllable Redis clock (the rate limiter's script) is also tested on miniredis.
 
 ## Consequences
 

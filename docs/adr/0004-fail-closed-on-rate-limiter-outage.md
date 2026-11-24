@@ -16,6 +16,10 @@ consumption for that channel (the same mechanism used when a circuit breaker is 
 and exposes the condition as a metric. Messages stay in RabbitMQ and delivery resumes automatically once
 Redis is reachable again.
 
+As built, pausing means the dispatcher holds the message it has picked and retries the limiter with
+backoff. The messages already buffered stay unacknowledged and the prefetch limit keeps the broker
+from sending more, so the rest stay in RabbitMQ; the consumers are not cancelled.
+
 ## Alternatives considered
 
 - **Fail open with a local fallback limiter** at 100/N per instance (N from configuration or from the

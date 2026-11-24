@@ -30,3 +30,6 @@ notification or a second send. Concurrent retries with the same key must also be
 - Idempotency is enforced in the same transaction as the write; there is no window in which two requests
   both succeed.
 - One extra unique index; no expiry mechanism is needed.
+- A batch stores its per-item results (`batches.item_results`, JSONB), so a replay returns the original
+  answer byte for byte, including the errors of items that were rejected and never stored, even after a
+  time-dependent rule such as `scheduled_at` would now judge them differently.

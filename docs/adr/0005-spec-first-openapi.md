@@ -15,8 +15,8 @@ comments or maintained by hand next to the code, it tends to drift from the actu
 - `oapi-codegen` generates the types and a strict server interface for the standard library `net/http`
   router; handlers implement that interface.
 - Domain validation that a schema cannot express (per-channel recipient formats, SMS encoding and segment
-  limits, template variables) lives in Go, in `internal/domain`.
-- The spec is served at `/docs` for interactive exploration.
+  limits) lives in Go, in `internal/domain`.
+- The spec is served at `/openapi.yaml`, and `/docs` shows it in Swagger UI for interactive exploration.
 
 ## Alternatives considered
 

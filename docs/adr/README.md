@@ -5,19 +5,19 @@ Short records of the significant design decisions: context, decision, alternativ
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-outbox-and-rabbitmq-for-dispatch.md) | PostgreSQL outbox + RabbitMQ for dispatch | Accepted |
-| [0002](0002-weighted-priority-queues.md) | Weighted priority queues per channel | Accepted |
+| [0002](0002-weighted-priority-queues.md) | Weighted priority queues per channel | Accepted, default prefetch amended |
 | [0003](0003-gcra-rate-limiting.md) | GCRA rate limiting in Redis (100 msg/s per channel, burst 1) | Accepted |
 | [0004](0004-fail-closed-on-rate-limiter-outage.md) | Fail closed when the rate limiter is unavailable | Accepted |
 | [0005](0005-spec-first-openapi.md) | Spec-first API with OpenAPI and oapi-codegen | Accepted |
 | [0006](0006-sql-first-data-access.md) | SQL-first data access with pgx and sqlc | Accepted |
 | [0007](0007-delivery-semantics-and-state-machine.md) | At-least-once delivery with guarded state transitions | Accepted, amended by 0015 |
 | [0008](0008-idempotency-keys-in-postgres.md) | Idempotency keys stored in PostgreSQL | Accepted |
-| [0009](0009-retry-and-failure-handling.md) | Retry policy, dead-lettering and circuit breaking | Accepted, amended by 0014 |
-| [0010](0010-realtime-status-via-redis-pubsub.md) | Real-time status updates over WebSocket via Redis pub/sub | Accepted |
+| [0009](0009-retry-and-failure-handling.md) | Retry policy, dead-lettering and circuit breaking | Accepted, amended by 0014 and 0015 |
+| [0010](0010-realtime-status-via-redis-pubsub.md) | Real-time status updates over WebSocket via Redis pub/sub | Accepted, not implemented yet |
 | [0011](0011-commit-generated-code.md) | Generated code is committed; generator versions are pinned | Accepted |
 | [0012](0012-integration-tests-with-testcontainers.md) | Integration tests against real dependencies with Testcontainers | Accepted |
 | [0013](0013-rabbitmq-topology-publishing-and-reconnection.md) | RabbitMQ topology, publishing and reconnection | Accepted |
 | [0014](0014-provider-response-classification.md) | Provider response classification and Retry-After | Accepted |
-| [0015](0015-ack-after-the-sending-transition.md) | Acknowledge a message once its notification is sending | Accepted |
+| [0015](0015-ack-after-the-sending-transition.md) | Acknowledge a message once its notification is sending | Accepted, prefetch amended |
 | [0016](0016-tracing-with-opentelemetry.md) | Tracing with OpenTelemetry, exported to Jaeger | Accepted |
 | [0017](0017-metrics-dashboards-in-compose.md) | Prometheus and Grafana dashboards in Docker Compose | Accepted |

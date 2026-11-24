@@ -1,6 +1,7 @@
 # 0010. Real-time status updates over WebSocket via Redis pub/sub
 
-- **Status:** Accepted
+- **Status:** Accepted, not implemented yet. Until it is, clients poll `GET /v1/notifications/{id}` or
+  `GET /v1/batches/{id}`.
 - **Date:** 2026-11-23
 
 ## Context
