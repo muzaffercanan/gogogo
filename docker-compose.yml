@@ -12,6 +12,8 @@ x-app: &app
     REDIS_URL: redis://redis:6379/0
     # Spans go to Jaeger over OTLP/HTTP. Set it to an empty value in .env to turn tracing off.
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+    OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
+    OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
 
 services:
   postgres:
@@ -98,6 +100,7 @@ services:
       MOCK_REJECT_RATE: ${MOCK_REJECT_RATE:-0}
       MOCK_THROTTLE_RATE: ${MOCK_THROTTLE_RATE:-0}
       MOCK_FAILURE_RATE: ${MOCK_FAILURE_RATE:-0}
+      MOCK_RETRY_AFTER: ${MOCK_RETRY_AFTER:-1s}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
     ports: ["9090:8080"]
 
