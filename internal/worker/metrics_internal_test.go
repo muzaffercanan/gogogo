@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/provider"
 )
@@ -14,7 +16,7 @@ import (
 // sendTo returns the *provider.Error a real client gets from a provider at url.
 func sendTo(t *testing.T, url string, timeout time.Duration) *provider.Error {
 	t.Helper()
-	c, err := provider.NewClient(url, timeout)
+	c, err := provider.NewClient(url, timeout, noop.NewTracerProvider())
 	if err != nil {
 		t.Fatal(err)
 	}

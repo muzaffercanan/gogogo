@@ -72,7 +72,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	sender, err := provider.NewClient(cfg.ProviderURL, cfg.ProviderTimeout)
+	sender, err := provider.NewClient(cfg.ProviderURL, cfg.ProviderTimeout, tp)
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func run() error {
 	}
 	var channels []*worker.Channel
 	for _, c := range queue.Channels() {
-		ch, err := worker.NewChannel(c, mq, limiter, deliverer, metrics, opts, log)
+		ch, err := worker.NewChannel(c, mq, limiter, deliverer, metrics, opts, tp, log)
 		if err != nil {
 			return fmt.Errorf("setting up the %s channel: %w", c, err)
 		}

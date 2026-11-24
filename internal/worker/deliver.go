@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strconv"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/platform/backoff"
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
+	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 	"github.com/muzaffercanan/gogogo/internal/provider"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 	"github.com/muzaffercanan/gogogo/internal/repository"
@@ -97,6 +99,8 @@ func NewDeliverer(store Store, sender Sender, deadLetters DeadLetters, retry Ret
 // Deliver delivers the notification of d. Until it has moved the notification to sending it gives up
 // when ctx ends, leaving d unacknowledged for the broker to hand out again. From then on it finishes
 // even if ctx ends: it has acknowledged d, and stopping halfway would leave the outcome to the reaper.
+//
+// The span of ctx is the delivery's: a retry continues its trace, and so does the dead-letter message.
 func (dl *Deliverer) Deliver(ctx context.Context, d queue.Delivery) Outcome {
 	ctx = logging.WithCorrelationID(ctx, d.CorrelationID)
 	log := dl.log.With("notification_id", d.NotificationID, "channel", string(d.Channel), "priority", string(d.Priority))
@@ -182,7 +186,9 @@ func (dl *Deliverer) sent(ctx context.Context, log *slog.Logger, n domain.Notifi
 func (dl *Deliverer) retryLater(ctx context.Context, log *slog.Logger, n domain.Notification, pe *provider.Error) Outcome {
 	delay := dl.retry.Delay(n.Attempts, pe.RetryAfter)
 	if err := dl.write(ctx, outcomeTimeout, func(ctx context.Context) error {
-		_, err := dl.store.ScheduleRetry(ctx, repository.Retry{ID: n.ID, Delay: delay, LastError: pe.Reason, Reason: reasonRetryable})
+		_, err := dl.store.ScheduleRetry(ctx, repository.Retry{
+			ID: n.ID, Delay: delay, LastError: pe.Reason, Reason: reasonRetryable, TraceParent: tracing.TraceParent(ctx),
+		})
 		return err
 	}); err != nil {
 		return dl.abandon(ctx, log, n.Channel, "retry_scheduled", err)
@@ -214,9 +220,7 @@ func (dl *Deliverer) fail(ctx context.Context, log *slog.Logger, d queue.Deliver
 	// PostgreSQL holds the outcome; the dead-letter queue is the operational view of it (ADR 0009), so
 	// a failed publish is only logged.
 	headers := amqp.Table{"failure_reason": pe.Reason, "attempts": strconv.Itoa(n.Attempts)}
-	if d.CorrelationID != "" {
-		headers[queue.CorrelationHeader] = d.CorrelationID
-	}
+	maps.Copy(headers, queue.Headers(d.CorrelationID, tracing.TraceParent(ctx)))
 	pubCtx, cancel := context.WithTimeout(ctx, deadLetterWait)
 	defer cancel()
 	if err := dl.deadLetters.PublishDeadLetter(pubCtx, queue.Message{

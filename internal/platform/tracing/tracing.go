@@ -88,6 +88,8 @@ const (
 	NotificationChannelKey  = attribute.Key("notification.channel")
 	NotificationPriorityKey = attribute.Key("notification.priority")
 	BatchIDKey              = attribute.Key("notification.batch_id")
+	// OutcomeKey is how a delivery attempt ended: sent, retry_scheduled, permanently_failed, ...
+	OutcomeKey = attribute.Key("notification.outcome")
 )
 
 // Propagator returns the propagator for trace context in HTTP headers: W3C traceparent and tracestate.

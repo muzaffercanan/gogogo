@@ -21,6 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
@@ -75,8 +77,9 @@ type answer struct {
 
 // received is one request the fake provider got.
 type received struct {
-	key  string
-	body string
+	key         string
+	body        string
+	traceparent string
 }
 
 // fakeProvider records the requests it gets and answers them with answerFor.
@@ -94,7 +97,7 @@ func newFakeProvider(t *testing.T, answerFor func(n int) answer) *fakeProvider {
 		body, _ := io.ReadAll(r.Body)
 		p.mu.Lock()
 		n := len(p.requests)
-		p.requests = append(p.requests, received{key: r.Header.Get("Idempotency-Key"), body: string(body)})
+		p.requests = append(p.requests, received{key: r.Header.Get("Idempotency-Key"), body: string(body), traceparent: r.Header.Get("traceparent")})
 		p.mu.Unlock()
 		a := p.answerFor(n)
 		if a.delay > 0 {
@@ -144,6 +147,8 @@ type harness struct {
 	// opts tune the worker; a test may change them before startWorker.
 	opts worker.Options
 	logs syncBuffer // everything logged, also written to the test output
+	// spans records the spans the worker ended.
+	spans *tracetest.SpanRecorder
 }
 
 // syncBuffer is a bytes.Buffer safe for the concurrent writes of a logger.
@@ -184,7 +189,7 @@ func (h *harness) waitLogged(t *testing.T, parts ...string) {
 func newHarness(t *testing.T, answerFor func(int) answer) *harness {
 	t.Helper()
 	h := &harness{db: pg.NewDatabase(t), vhost: mq.NewVHost(t), rate: 100, redisURL: rdb.NewURL(t), reg: prometheus.NewRegistry(),
-		opts: worker.Options{Prefetch: 5, Concurrency: 4, Weights: worker.DefaultWeights()}}
+		opts: worker.Options{Prefetch: 5, Concurrency: 4, Weights: worker.DefaultWeights()}, spans: tracetest.NewSpanRecorder()}
 	h.log = slog.New(slog.NewTextHandler(io.MultiWriter(t.Output(), &h.logs), nil))
 	h.store = repository.New(h.db)
 	h.sup = queue.NewSupervisor(h.vhost, t.Name(), h.log)
@@ -219,14 +224,15 @@ func (h *harness) startWorker(t *testing.T) (stop func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sender, err := provider.NewClient(h.provider.srv.URL, 2*time.Second)
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(h.spans))
+	sender, err := provider.NewClient(h.provider.srv.URL, 2*time.Second, tp)
 	if err != nil {
 		t.Fatal(err)
 	}
 	retry := worker.WithJitter(worker.DefaultRetryPolicy(), func(window time.Duration) time.Duration { return window })
 	h.metrics = worker.NewMetrics(h.reg)
 	deliverer := worker.NewDeliverer(h.store, sender, h.pub, retry, h.metrics, h.log)
-	ch, err := worker.NewChannel(domain.ChannelSMS, h.sup, limiter, deliverer, h.metrics, h.opts, h.log)
+	ch, err := worker.NewChannel(domain.ChannelSMS, h.sup, limiter, deliverer, h.metrics, h.opts, tp, h.log)
 	if err != nil {
 		t.Fatal(err)
 	}

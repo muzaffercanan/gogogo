@@ -7,8 +7,14 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/platform/backoff"
+	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 )
 
@@ -28,6 +34,10 @@ const (
 // hands the delivery to that sender; taking the sender first means a send starts as soon as its token
 // is granted (ADR 0015). While the breaker is open it picks nothing more: the deliveries buffered so far
 // stay unacknowledged with the worker.
+//
+// Each delivery gets a consumer span from the moment it is picked, under the relay's publish span its
+// message names, so that its trace shows what it waited for: events mark when the breaker let it
+// through, when a sender was free and when its rate-limit token was granted.
 type Dispatcher struct {
 	channel   domain.Channel
 	picker    *Picker
@@ -36,14 +46,15 @@ type Dispatcher struct {
 	metrics   *Metrics
 	breaker   *breaker
 	senders   chan struct{} // one slot per send in flight
+	tracer    trace.Tracer
 	log       *slog.Logger
 
 	minBackoff, maxBackoff time.Duration
 }
 
 // NewDispatcher returns a dispatcher for channel c that runs at most opts.Concurrency sends at once
-// behind a circuit breaker with opts.Breaker, and reports to metrics.
-func NewDispatcher(c domain.Channel, picker *Picker, limiter Limiter, deliverer *Deliverer, metrics *Metrics, opts Options, log *slog.Logger) (*Dispatcher, error) {
+// behind a circuit breaker with opts.Breaker, reports to metrics and traces each delivery with tp.
+func NewDispatcher(c domain.Channel, picker *Picker, limiter Limiter, deliverer *Deliverer, metrics *Metrics, opts Options, tp trace.TracerProvider, log *slog.Logger) (*Dispatcher, error) {
 	if opts.Concurrency < 1 {
 		return nil, fmt.Errorf("concurrency %d is below 1", opts.Concurrency)
 	}
@@ -64,6 +75,7 @@ func NewDispatcher(c domain.Channel, picker *Picker, limiter Limiter, deliverer 
 		metrics:    metrics,
 		breaker:    b,
 		senders:    make(chan struct{}, opts.Concurrency),
+		tracer:     tp.Tracer("github.com/muzaffercanan/gogogo/internal/worker"),
 		log:        log,
 		minBackoff: limiterMinBackoff,
 		maxBackoff: limiterMaxBackoff,
@@ -80,32 +92,69 @@ func (dp *Dispatcher) Run(ctx context.Context) {
 		if err != nil {
 			return
 		}
-		done, ok := dp.breaker.allow(ctx)
+		spanCtx, span := dp.processSpan(ctx, d)
+		done, ok := dp.breaker.allow(spanCtx)
 		if !ok {
+			endProcess(span, OutcomeAbandoned)
 			return
 		}
+		span.AddEvent("circuit breaker allowed")
 		select {
 		case dp.senders <- struct{}{}:
+			span.AddEvent("sender acquired")
 		case <-ctx.Done():
 			done(OutcomeAbandoned)
+			endProcess(span, OutcomeAbandoned)
 			return
 		}
-		if !dp.token(ctx) {
+		waited, ok := dp.token(spanCtx)
+		if !ok {
 			<-dp.senders
 			done(OutcomeAbandoned)
+			endProcess(span, OutcomeAbandoned)
 			return
 		}
+		span.AddEvent("rate limit token granted", trace.WithAttributes(attribute.Float64("ratelimit.wait_ms", float64(waited.Microseconds())/1000)))
 		inFlight.Go(func() {
 			defer func() { <-dp.senders }()
-			done(dp.deliverer.Deliver(ctx, d))
+			o := dp.deliverer.Deliver(spanCtx, d)
+			done(o)
+			endProcess(span, o)
 		})
 	}
 }
 
-// token waits for a rate-limit token. While the limiter cannot be reached it keeps trying with backoff
-// and sends nothing (fail closed, ADR 0004); the channel then reports not ready and
-// ratelimit_unavailable is 1. It reports false if ctx ended first.
-func (dp *Dispatcher) token(ctx context.Context) bool {
+// processSpan starts the consumer span of delivering d, under the span its message names.
+func (dp *Dispatcher) processSpan(ctx context.Context, d queue.Delivery) (context.Context, trace.Span) {
+	key := queue.QueueName(d.Channel, d.Priority)
+	return dp.tracer.Start(tracing.WithTraceParent(ctx, d.TraceParent), "process "+key,
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			semconv.MessagingSystemRabbitMQ,
+			semconv.MessagingOperationTypeProcess,
+			semconv.MessagingOperationName("process"),
+			semconv.MessagingDestinationName(key),
+			semconv.MessagingMessageID(d.NotificationID),
+			tracing.NotificationIDKey.String(d.NotificationID),
+			tracing.NotificationChannelKey.String(string(d.Channel)),
+			tracing.NotificationPriorityKey.String(string(d.Priority)),
+		))
+}
+
+// endProcess ends the span of a delivery with its outcome; one in which the notification was not sent
+// (other than a skip) is an error.
+func endProcess(span trace.Span, o Outcome) {
+	span.SetAttributes(tracing.OutcomeKey.String(string(o)))
+	if o != OutcomeSent && o != OutcomeSkipped {
+		span.SetStatus(codes.Error, string(o))
+	}
+	span.End()
+}
+
+// token waits for a rate-limit token and returns how long the limiter made it wait. While the limiter
+// cannot be reached it keeps trying with backoff and sends nothing (fail closed, ADR 0004); the channel
+// then reports not ready and ratelimit_unavailable is 1. It reports false if ctx ended first.
+func (dp *Dispatcher) token(ctx context.Context) (time.Duration, bool) {
 	for failures := 0; ; failures++ {
 		waited, err := dp.limiter.Wait(ctx, dp.channel)
 		if err == nil {
@@ -114,10 +163,10 @@ func (dp *Dispatcher) token(ctx context.Context) bool {
 			if failures > 0 {
 				dp.log.InfoContext(ctx, "rate limiter reachable again; sending resumes")
 			}
-			return true
+			return waited, true
 		}
 		if ctx.Err() != nil {
-			return false
+			return 0, false
 		}
 		dp.metrics.limiterFailed(dp.channel)
 		delay := backoff.FullJitter(failures, dp.minBackoff, dp.maxBackoff)
@@ -126,7 +175,7 @@ func (dp *Dispatcher) token(ctx context.Context) bool {
 		}
 		select {
 		case <-ctx.Done():
-			return false
+			return 0, false
 		case <-time.After(delay):
 		}
 	}
@@ -151,8 +200,8 @@ type Channel struct {
 }
 
 // NewChannel wires a consumer of channel c's work queues to a picker and a dispatcher that sends
-// through deliverer at the pace of limiter and reports to metrics.
-func NewChannel(c domain.Channel, sup *queue.Supervisor, limiter Limiter, deliverer *Deliverer, metrics *Metrics, opts Options, log *slog.Logger) (*Channel, error) {
+// through deliverer at the pace of limiter, reports to metrics and traces with tp.
+func NewChannel(c domain.Channel, sup *queue.Supervisor, limiter Limiter, deliverer *Deliverer, metrics *Metrics, opts Options, tp trace.TracerProvider, log *slog.Logger) (*Channel, error) {
 	consumer, err := queue.NewConsumer(sup, c, opts.Prefetch, log)
 	if err != nil {
 		return nil, err
@@ -161,7 +210,7 @@ func NewChannel(c domain.Channel, sup *queue.Supervisor, limiter Limiter, delive
 	if err != nil {
 		return nil, err
 	}
-	dispatcher, err := NewDispatcher(c, picker, limiter, deliverer, metrics, opts, log)
+	dispatcher, err := NewDispatcher(c, picker, limiter, deliverer, metrics, opts, tp, log)
 	if err != nil {
 		return nil, err
 	}

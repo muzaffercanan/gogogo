@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/provider"
@@ -30,7 +31,7 @@ var message = provider.Message{
 
 func newClient(t *testing.T, url string, timeout time.Duration) *provider.Client {
 	t.Helper()
-	c, err := provider.NewClient(url, timeout)
+	c, err := provider.NewClient(url, timeout, noop.NewTracerProvider())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,11 +306,11 @@ func TestNewClientRejectsBadURLsAndTimeouts(t *testing.T) {
 		{url: "http:///send", timeout: time.Second},
 		{url: "http://example.test/send", timeout: 0},
 	} {
-		if _, err := provider.NewClient(tt.url, tt.timeout); err == nil {
+		if _, err := provider.NewClient(tt.url, tt.timeout, noop.NewTracerProvider()); err == nil {
 			t.Errorf("NewClient(%q, %v) succeeded, want an error", tt.url, tt.timeout)
 		}
 	}
-	if _, err := provider.NewClient("http://mock-provider:8080/send", 10*time.Second); err != nil {
+	if _, err := provider.NewClient("http://mock-provider:8080/send", 10*time.Second, noop.NewTracerProvider()); err != nil {
 		t.Errorf("NewClient with a valid url: %v", err)
 	}
 }

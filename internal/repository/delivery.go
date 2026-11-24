@@ -22,6 +22,8 @@ type Retry struct {
 	LastError string
 	// Reason is recorded on the status event. Optional.
 	Reason string
+	// TraceParent is the W3C traceparent the next attempt continues: the failed attempt's span. Optional.
+	TraceParent string
 }
 
 // ScheduleRetry moves a notification from sending to retry_scheduled and inserts the outbox row that
@@ -42,7 +44,7 @@ func (s *Store) ScheduleRetry(ctx context.Context, r Retry) (domain.Notification
 		if err != nil {
 			return err
 		}
-		payload, err := json.Marshal(outboxPayload{Channel: n.Channel, Priority: n.Priority, CorrelationID: n.CorrelationID})
+		payload, err := json.Marshal(outboxPayload{Channel: n.Channel, Priority: n.Priority, CorrelationID: n.CorrelationID, TraceParent: r.TraceParent})
 		if err != nil {
 			return fmt.Errorf("encoding retry outbox payload of notification %s: %w", r.ID, err)
 		}

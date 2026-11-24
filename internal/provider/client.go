@@ -18,7 +18,11 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/muzaffercanan/gogogo/internal/domain"
+	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 )
 
 // maxResponseBytes bounds how much of a response body is read.
@@ -79,8 +83,9 @@ type Client struct {
 }
 
 // NewClient returns a client for the provider endpoint rawURL that gives each request timeout to
-// complete.
-func NewClient(rawURL string, timeout time.Duration) (*Client, error) {
+// complete. Each request gets a client span from tp, and its traceparent header continues that span's
+// trace at the provider.
+func NewClient(rawURL string, timeout time.Duration, tp trace.TracerProvider) (*Client, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("provider url %q is not an absolute http(s) url", rawURL)
@@ -96,7 +101,7 @@ func NewClient(rawURL string, timeout time.Duration) (*Client, error) {
 		url:     rawURL,
 		timeout: timeout,
 		http: &http.Client{
-			Transport: transport,
+			Transport: otelhttp.NewTransport(transport, otelhttp.WithTracerProvider(tp), otelhttp.WithPropagators(tracing.Propagator())),
 			// A redirect is not part of the contract; following it would also turn the POST into a GET
 			// for 301, 302 and 303.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
