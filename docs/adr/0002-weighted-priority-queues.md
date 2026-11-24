@@ -1,6 +1,6 @@
 # 0002. Weighted priority queues per channel
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended 2026-11-25: the default prefetch is 20 (see ADR 0015).
 - **Date:** 2026-11-23
 
 ## Context
@@ -13,7 +13,7 @@ the rate cap (for example, a breaking-news blast).
 ## Decision
 
 - Each channel has three durable queues: `<channel>.high`, `<channel>.normal`, `<channel>.low`.
-- Each worker consumes all three with a small prefetch (default 5) into local buffers, and a
+- Each worker consumes all three with a small prefetch (default 20) into local buffers, and a
   **work-conserving smooth weighted round-robin** picks the next message: default weights 6:3:1,
   configurable. An empty class yields its share to the others.
 - The pick happens **before** acquiring a rate-limit token, so the next token always goes to the

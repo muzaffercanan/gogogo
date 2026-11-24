@@ -1,6 +1,7 @@
 # 0015. Acknowledge a message once its notification is sending
 
-- **Status:** Accepted. Amends [0007](0007-delivery-semantics-and-state-machine.md).
+- **Status:** Accepted. Amends [0007](0007-delivery-semantics-and-state-machine.md). Amended 2026-11-25:
+  the sending transition still bounds throughput, so the default prefetch is 20.
 - **Date:** 2026-11-24
 
 ## Context
@@ -29,6 +30,13 @@ way. The only thing the unacknowledged message provides is dead-lettering by `na
   truth (ADR 0009).
 - If PostgreSQL cannot be reached after the provider call, the outcome write is retried with backoff for
   up to 30 s, well inside the reaper's lease; after that the reaper takes over.
+- Each work queue's prefetch defaults to 20 (`WORKER_PREFETCH`). A message stays unacknowledged until
+  its `queued → sending` transition commits, so one priority still tops out at prefetch / (wait for
+  the picker + rate-limit wait + that commit). Under a burst of 10 000 notifications against the
+  Compose stack the commit took 35–490 ms; with a prefetch of 5 a channel drained at 100 msg/s only
+  while all three priorities had messages, then at about 78 and 30 msg/s, and the weights stopped
+  applying once high was empty. With 20 it drained at 98 msg/s with high, normal and low sent in that
+  order (100 × 0.2 s = 20).
 - On shutdown the worker stops picking messages, lets the sends in flight finish and record their
   outcome, then closes its broker channels; messages picked but not sent go back to their queues.
 
@@ -42,8 +50,11 @@ way. The only thing the unacknowledged message provides is dead-lettering by `na
 
 ## Consequences
 
-- Throughput no longer depends on provider latency; the prefetch only bounds what the priority picker
-  sees.
+- Throughput no longer depends on provider latency, but it still depends on how long the database
+  takes to commit the sending transition. If that grows past about 0.2 s, one busy priority falls below
+  the rate limit again and `WORKER_PREFETCH` has to grow with it.
+- A worker holds up to 3 × prefetch unacknowledged messages per channel, so with several replicas a
+  small backlog is spread less evenly.
 - The dead-letter queue misses a permanently failed delivery if its publish fails.
 - `WORKER_CONCURRENCY` is a new setting to size against provider latency: rate × latency sends are in
   flight at full speed (100 × 0.3 s = 30).
