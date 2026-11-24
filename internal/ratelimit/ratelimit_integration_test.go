@@ -46,6 +46,7 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 	// the test watches how fast it runs.
 	ctx, cancel := context.WithTimeout(context.Background(), run)
 	defer cancel()
+	origin := time.Now()
 	clock := watchRedisClock(ctx, t, url)
 	for range instances {
 		opts, err := redis.ParseURL(url)
@@ -79,7 +80,14 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 		})
 	}
 	wg.Wait()
-	fastest, reached := clock()
+	fastest, reached, readings := clock()
+	defer func() {
+		// The rates above summarise the clock; when they do not explain the sends, the details might.
+		if t.Failed() {
+			t.Logf("Redis clock: %s", clockSummary(origin, readings))
+			t.Logf("sends per 250 ms from the start: %v", perQuarterSecond(origin, starts, run))
+		}
+	}()
 
 	slices.SortFunc(starts, func(a, b time.Time) int { return a.Compare(b) })
 	most := 0
@@ -112,9 +120,21 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 	}
 }
 
+// perQuarterSecond counts the starts in each 250 ms from origin over run.
+func perQuarterSecond(origin time.Time, starts []time.Time, run time.Duration) []int {
+	counts := make([]int, int(run/(250*time.Millisecond))+1)
+	for _, s := range starts {
+		if i := int(s.Sub(origin) / (250 * time.Millisecond)); i >= 0 && i < len(counts) {
+			counts[i]++
+		}
+	}
+	return counts
+}
+
 // watchRedisClock reads the clock of the Redis server at url every 20 ms until ctx ends. The returned
-// function waits for that and reports how fast the clock ran against the host's (see clockRates).
-func watchRedisClock(ctx context.Context, t *testing.T, url string) func() (fastest, reached float64) {
+// function waits for that and reports how fast the clock ran against the host's (see clockRates), with
+// the readings.
+func watchRedisClock(ctx context.Context, t *testing.T, url string) func() (fastest, reached float64, readings []clockReading) {
 	t.Helper()
 	opts, err := redis.ParseURL(url)
 	if err != nil {
@@ -140,13 +160,13 @@ func watchRedisClock(ctx context.Context, t *testing.T, url string) func() (fast
 			}
 		}
 	}()
-	return func() (float64, float64) {
+	return func() (float64, float64, []clockReading) {
 		<-done
 		fastest, reached, ok := clockRates(readings)
 		if !ok {
 			t.Fatalf("could not tell how fast the Redis clock ran from %d readings", len(readings))
 		}
-		return fastest, reached
+		return fastest, reached, readings
 	}
 }
 

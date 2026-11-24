@@ -1,7 +1,9 @@
 package ratelimit_test
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -50,6 +52,96 @@ func clockRates(readings []clockReading) (fastest, reached float64, ok bool) {
 }
 
 func mid(r clockReading) time.Time { return r.before.Add(r.after.Sub(r.before) / 2) }
+
+// clockSummary describes the readings for a failure message, with host times given from origin: how
+// far each clock went from the first reading to the last, every step of the Redis clock against the
+// host's between two readings (one that its reading times cannot explain by more than 20 ms), the
+// longest gap between readings and the slowest call.
+func clockSummary(origin time.Time, readings []clockReading) string {
+	if len(readings) == 0 {
+		return "no readings of the Redis clock"
+	}
+	at := func(t time.Time) time.Duration { return t.Sub(origin).Round(time.Millisecond) }
+	first, last := readings[0], readings[len(readings)-1]
+	var (
+		steps            []string
+		gap, slowest     time.Duration
+		gapAt, slowestAt time.Time
+	)
+	for i, r := range readings {
+		if d := r.after.Sub(r.before); d > slowest {
+			slowest, slowestAt = d, r.before
+		}
+		if i == 0 {
+			continue
+		}
+		p := readings[i-1]
+		if g := r.before.Sub(p.after); g > gap {
+			gap, gapAt = g, p.after
+		}
+		// The two Redis readings were taken between r.before - p.after and r.after - p.before apart.
+		moved, slack := r.redis.Sub(p.redis), 20*time.Millisecond
+		if moved < r.before.Sub(p.after)-slack || moved > r.after.Sub(p.before)+slack {
+			step, sign := (moved - mid(r).Sub(mid(p))).Round(time.Millisecond), ""
+			if step > 0 {
+				sign = "+"
+			}
+			steps = append(steps, fmt.Sprintf("%s%v at +%v", sign, step, at(mid(p))))
+		}
+	}
+	if len(steps) == 0 {
+		steps = []string{"none"}
+	}
+	return fmt.Sprintf("%d readings from +%v to +%v of host time; the Redis clock went %v in %v; steps: %s; longest gap between readings %v at +%v; slowest reading %v at +%v",
+		len(readings), at(mid(first)), at(mid(last)), last.redis.Sub(first.redis).Round(time.Millisecond),
+		mid(last).Sub(mid(first)).Round(time.Millisecond), strings.Join(steps, ", "),
+		gap.Round(time.Millisecond), at(gapAt), slowest.Round(time.Millisecond), at(slowestAt))
+}
+
+func TestClockSummary(t *testing.T) {
+	host := time.Now()
+	redis := time.Unix(1_700_000_000, 0)
+	// Readings every 20 ms over 3 s, each call taking 2 ms; the Redis clock is set back by 850 ms at
+	// 1.5 s and jumps 300 ms ahead at 2.5 s, and the reading at 2 s takes 100 ms and is followed by
+	// a 200 ms gap.
+	var readings []clockReading
+	for at := time.Duration(0); at <= 3*time.Second; at += 20 * time.Millisecond {
+		r := redis.Add(at + time.Millisecond)
+		if at >= 1500*time.Millisecond {
+			r = r.Add(-850 * time.Millisecond)
+		}
+		if at >= 2500*time.Millisecond {
+			r = r.Add(300 * time.Millisecond)
+		}
+		call := 2 * time.Millisecond
+		switch {
+		case at == 2*time.Second:
+			call = 100 * time.Millisecond
+		case at > 2*time.Second && at < 2300*time.Millisecond:
+			continue
+		}
+		readings = append(readings, clockReading{before: host.Add(at), after: host.Add(at + call), redis: r})
+	}
+
+	got := clockSummary(host, readings)
+	for _, want := range []string{
+		"steps: -850ms at +1.481s, +300ms at +2.481s;",
+		"longest gap between readings 200ms at +2.1s",
+		"slowest reading 100ms at +2s",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("clockSummary = %q, want it to contain %q", got, want)
+		}
+	}
+
+	// A slow reading alone is not a step, nor is a long gap.
+	if got := clockSummary(host, readings[:70]); !strings.Contains(got, "steps: none;") {
+		t.Errorf("clockSummary of readings without a step = %q, want no steps", got)
+	}
+	if got := clockSummary(host, nil); got != "no readings of the Redis clock" {
+		t.Errorf("clockSummary(nil) = %q", got)
+	}
+}
 
 func TestClockRates(t *testing.T) {
 	host := time.Now()
