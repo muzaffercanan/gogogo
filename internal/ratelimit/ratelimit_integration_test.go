@@ -4,6 +4,7 @@ package ratelimit_test
 
 import (
 	"context"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -40,8 +41,12 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 		lateness time.Duration // the most any send started after its slot
 		wg       sync.WaitGroup
 	)
+	// Redis spaces the slots by its own clock, while the starts are timed by the host's. On Docker
+	// Desktop Redis runs in a VM whose clock can run a few percent fast and is set back now and then, so
+	// the test watches how fast it runs.
 	ctx, cancel := context.WithTimeout(context.Background(), run)
 	defer cancel()
+	clock := watchRedisClock(ctx, t, url)
 	for range instances {
 		opts, err := redis.ParseURL(url)
 		if err != nil {
@@ -74,6 +79,7 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 		})
 	}
 	wg.Wait()
+	fastest, reached := clock()
 
 	slices.SortFunc(starts, func(a, b time.Time) int { return a.Compare(b) })
 	most := 0
@@ -86,20 +92,61 @@ func TestLimiterStartsAtMostTheRatePerRollingSecondAcrossInstances(t *testing.T)
 	}
 	perSecond := float64(len(starts)) / run.Seconds()
 	interval := time.Second / rate
-	allowed := rate + int((lateness+interval-1)/interval)
-	t.Logf("%d instances started %d sends in %v (%.1f/s); most in any rolling second: %d; latest start %v after its slot",
-		instances, len(starts), run, perSecond, most, lateness)
+	allowed := int(math.Ceil(float64(time.Second+lateness) * fastest / float64(interval)))
+	t.Logf("%d instances started %d sends in %v (%.1f/s); most in any rolling second: %d; latest start %v after its slot; Redis clock at most %.4f times as fast as the host's, and %.4f times as far",
+		instances, len(starts), run, perSecond, most, lateness, fastest, reached)
 
-	// Redis hands out slots exactly one interval apart, so at most rate slots fall in any second. Sends
-	// that start up to the measured lateness after their slots can put the slots of a second and that
-	// lateness into one second of starts: at most rate + ceil(lateness / interval).
+	// Redis hands out slots exactly one interval apart by its clock, which ran at most fastest times as
+	// fast as the host's in any second (setting it back only spaces slots out), so in host time they are
+	// at least interval / fastest apart. Sends that start up to the measured lateness after their slots
+	// can put the slots of 1 s plus that lateness into one second of starts.
 	if most > allowed {
-		t.Errorf("%d sends started within one second, want at most %d (%d per second, plus %v of start lateness)", most, allowed, rate, lateness)
+		t.Errorf("%d sends started within one second, want at most %d (%d per second by a Redis clock running %.4f times as fast, plus %v of start lateness)",
+			most, allowed, rate, fastest, lateness)
 	}
-	// The instances share one limit: together they get the rate, not a multiple of it, and the limiter
-	// does not hold them back much below it.
-	if perSecond < 0.9*rate || perSecond > 1.05*rate {
-		t.Errorf("%d instances together sent %.1f per second, want about %d", instances, perSecond, rate)
+	// The instances share one limit: together they get the rate by the Redis clock, not a multiple of
+	// it, and the limiter does not hold them back much below it.
+	if want := rate * reached; perSecond < 0.9*want || perSecond > 1.05*want {
+		t.Errorf("%d instances together sent %.1f per second, want about %.1f (%d per second by a Redis clock that got %.4f times as far as the host's)",
+			instances, perSecond, want, rate, reached)
+	}
+}
+
+// watchRedisClock reads the clock of the Redis server at url every 20 ms until ctx ends. The returned
+// function waits for that and reports how fast the clock ran against the host's (see clockRates).
+func watchRedisClock(ctx context.Context, t *testing.T, url string) func() (fastest, reached float64) {
+	t.Helper()
+	opts, err := redis.ParseURL(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := redis.NewClient(opts)
+	t.Cleanup(func() { _ = client.Close() })
+	var readings []clockReading
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			before := time.Now()
+			now, err := client.Time(ctx).Result()
+			after := time.Now()
+			if err == nil {
+				readings = append(readings, clockReading{before: before, after: after, redis: now})
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
+	}()
+	return func() (float64, float64) {
+		<-done
+		fastest, reached, ok := clockRates(readings)
+		if !ok {
+			t.Fatalf("could not tell how fast the Redis clock ran from %d readings", len(readings))
+		}
+		return fastest, reached
 	}
 }
 
