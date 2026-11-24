@@ -12,6 +12,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
+	"github.com/muzaffercanan/gogogo/internal/platform/backoff"
 )
 
 // ErrChannelClosed is returned when a delivery is acknowledged or rejected after the AMQP channel it
@@ -135,7 +136,7 @@ func (c *Consumer) Run(ctx context.Context) {
 		if started {
 			failures = 0
 		}
-		delay := jitteredBackoff(failures, c.minBackoff, c.maxBackoff)
+		delay := backoff.FullJitter(failures, c.minBackoff, c.maxBackoff)
 		failures++
 		level := slog.LevelWarn
 		if errors.Is(err, ErrNotConnected) {

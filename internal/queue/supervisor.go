@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+
+	"github.com/muzaffercanan/gogogo/internal/platform/backoff"
 )
 
 // ErrNotConnected is returned while the supervisor has no open connection to RabbitMQ.
@@ -105,19 +106,10 @@ func (s *Supervisor) connect(ctx context.Context) (*amqp.Connection, error) {
 	return conn, nil
 }
 
-// backoff returns the delay after the given number of consecutive failures.
+// backoff returns the delay after the given number of consecutive failures:
+// rand(0, min(maxBackoff, minBackoff·2^failures)).
 func (s *Supervisor) backoff(failures int) time.Duration {
-	return jitteredBackoff(failures, s.minBackoff, s.maxBackoff)
-}
-
-// jitteredBackoff returns rand(0, min(maxBackoff, minBackoff·2^failures)): full jitter over an
-// exponentially growing, capped window.
-func jitteredBackoff(failures int, minBackoff, maxBackoff time.Duration) time.Duration {
-	window := maxBackoff
-	if failures < 32 { // beyond that the shift overflows and the cap applies anyway
-		window = min(maxBackoff, minBackoff<<failures)
-	}
-	return rand.N(window + 1) //nolint:gosec // G404: jitter needs no cryptographic randomness
+	return backoff.FullJitter(failures, s.minBackoff, s.maxBackoff)
 }
 
 func (s *Supervisor) setConn(conn *amqp.Connection) {
