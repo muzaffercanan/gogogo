@@ -265,6 +265,137 @@ func TestListenOutboxSignalsOnReadyAndNotifyAndDestroysSession(t *testing.T) {
 	}
 }
 
+func TestReapExpiredDeliveriesRetriesUnderMaxAndFailsExhausted(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	if _, err := db.Exec(ctx, `DELETE FROM outbox`); err != nil {
+		t.Fatalf("clearing outbox: %v", err)
+	}
+
+	retryID := createStuckSending(ctx, t, store, db, 2, 5, 65*time.Second, func(n *domain.NewNotification) {
+		n.Channel = domain.ChannelEmail
+		n.Priority = domain.PriorityHigh
+		n.CorrelationID = "corr-reap"
+	})
+	exhaustedID := createStuckSending(ctx, t, store, db, 5, 5, 90*time.Second, nil)
+	freshID := createStuckSending(ctx, t, store, db, 1, 5, 10*time.Second, nil)
+
+	retried, failed, err := store.ReapExpiredDeliveries(ctx, 60*time.Second, 10)
+	if err != nil {
+		t.Fatalf("ReapExpiredDeliveries: %v", err)
+	}
+	if retried != 1 || failed != 1 {
+		t.Fatalf("retried = %d, failed = %d; want 1, 1", retried, failed)
+	}
+
+	gotRetry, err := store.GetNotification(ctx, retryID)
+	if err != nil {
+		t.Fatalf("GetNotification(retry): %v", err)
+	}
+	if gotRetry.Status != domain.StatusRetryScheduled || gotRetry.Attempts != 2 || gotRetry.LastError != "delivery lease expired" {
+		t.Errorf("retried notification = %+v; want retry_scheduled, attempts 2, last_error \"delivery lease expired\"", gotRetry)
+	}
+	if from, to, reason := lastEvent(ctx, t, db, retryID); from != string(domain.StatusSending) ||
+		to != string(domain.StatusRetryScheduled) || reason != "lease_expired" {
+		t.Errorf("retried last event = %q -> %q (%q), want sending -> retry_scheduled (lease_expired)", from, to, reason)
+	}
+	if active := leaseActive(ctx, t, db, retryID); active {
+		t.Error("retried notification still has sending_started_at set")
+	}
+
+	gotExhausted, err := store.GetNotification(ctx, exhaustedID)
+	if err != nil {
+		t.Fatalf("GetNotification(exhausted): %v", err)
+	}
+	if gotExhausted.Status != domain.StatusPermanentlyFailed || gotExhausted.Attempts != 5 || gotExhausted.LastError != "delivery lease expired" {
+		t.Errorf("exhausted notification = %+v; want permanently_failed, attempts 5, last_error \"delivery lease expired\"", gotExhausted)
+	}
+	if from, to, reason := lastEvent(ctx, t, db, exhaustedID); from != string(domain.StatusSending) ||
+		to != string(domain.StatusPermanentlyFailed) || reason != "lease_expired" {
+		t.Errorf("exhausted last event = %q -> %q (%q), want sending -> permanently_failed (lease_expired)", from, to, reason)
+	}
+	if active := leaseActive(ctx, t, db, exhaustedID); active {
+		t.Error("exhausted notification still has sending_started_at set")
+	}
+
+	if s := statusOf(ctx, t, db, freshID); s != domain.StatusSending {
+		t.Errorf("fresh sending status = %s, want sending", s)
+	}
+	if active := leaseActive(ctx, t, db, freshID); !active {
+		t.Error("fresh sending notification lost its sending_started_at")
+	}
+
+	// Only the retryable notification gets a new outbox row, immediately due (available_at = updated_at).
+	if n := outboxCount(ctx, t, db); n != 1 {
+		t.Fatalf("outbox has %d rows, want 1", n)
+	}
+	var (
+		outboxNotifID uuid.UUID
+		dueNow        bool
+	)
+	if err := db.QueryRow(ctx,
+		`SELECT o.notification_id, o.available_at = n.updated_at
+		FROM outbox AS o JOIN notifications AS n ON n.id = o.notification_id`,
+	).Scan(&outboxNotifID, &dueNow); err != nil {
+		t.Fatalf("reading retry outbox row: %v", err)
+	}
+	if outboxNotifID != retryID || !dueNow {
+		t.Errorf("retry outbox row = (%s, dueNow=%v), want (%s, true)", outboxNotifID, dueNow, retryID)
+	}
+
+	if _, _, err := store.ReapExpiredDeliveries(ctx, 0, 10); err == nil {
+		t.Error("ReapExpiredDeliveries with lease 0 succeeded, want an error")
+	}
+	if _, _, err := store.ReapExpiredDeliveries(ctx, time.Minute, 0); err == nil {
+		t.Error("ReapExpiredDeliveries with limit 0 succeeded, want an error")
+	}
+}
+
+func createStuckSending(
+	ctx context.Context,
+	t *testing.T,
+	store *repository.Store,
+	db *pgxpool.Pool,
+	attempts, maxAttempts int,
+	age time.Duration,
+	modify func(*domain.NewNotification),
+) uuid.UUID {
+	t.Helper()
+	nn := newNotification(t, func(n *domain.NewNotification) {
+		n.MaxAttempts = maxAttempts
+		if modify != nil {
+			modify(n)
+		}
+	})
+	n, _, err := store.CreateNotification(ctx, nn)
+	if err != nil {
+		t.Fatalf("CreateNotification: %v", err)
+	}
+	if _, err := db.Exec(ctx, `DELETE FROM outbox WHERE notification_id = $1`, n.ID); err != nil {
+		t.Fatalf("deleting initial outbox row: %v", err)
+	}
+	if _, err := db.Exec(ctx,
+		`UPDATE notifications
+		SET status = 'sending', attempts = $2,
+		    sending_started_at = now() - make_interval(secs => $3::double precision)
+		WHERE id = $1`,
+		n.ID, attempts, age.Seconds(),
+	); err != nil {
+		t.Fatalf("forcing sending state: %v", err)
+	}
+	return n.ID
+}
+
+func leaseActive(ctx context.Context, t *testing.T, db *pgxpool.Pool, id uuid.UUID) bool {
+	t.Helper()
+	var active bool
+	if err := db.QueryRow(ctx, `SELECT sending_started_at IS NOT NULL FROM notifications WHERE id = $1`, id).Scan(&active); err != nil {
+		t.Fatalf("reading lease: %v", err)
+	}
+	return active
+}
+
 func createWithAvailableAt(
 	ctx context.Context,
 	t *testing.T,

@@ -145,3 +145,93 @@ func (s *Store) ListenOutbox(ctx context.Context, onWake func()) error {
 		onWake()
 	}
 }
+
+const (
+	// leaseExpiredReason is recorded on the status event when the reaper recovers a stuck delivery.
+	leaseExpiredReason = "lease_expired"
+	// leaseExpiredError is stored in notifications.last_error when a delivery lease expires.
+	leaseExpiredError = "delivery lease expired"
+)
+
+// ReapExpiredDeliveries moves up to limit notifications that have been in status sending for at least
+// lease to retry_scheduled (when attempts < max_attempts) or permanently_failed (when attempts are
+// exhausted), records a status event with reason "lease_expired" and last_error "delivery lease
+// expired" for each one, and inserts due outbox rows (waking the relay with NOTIFY outbox) for the ones
+// that moved to retry_scheduled — all in one transaction.
+//
+// It returns the number of notifications moved to retry_scheduled and permanently_failed.
+func (s *Store) ReapExpiredDeliveries(ctx context.Context, lease time.Duration, limit int) (retried, failed int, err error) {
+	if lease <= 0 {
+		return 0, 0, fmt.Errorf("reaper lease must be positive, got %v", lease)
+	}
+	if limit <= 0 {
+		return 0, 0, fmt.Errorf("reaper batch limit must be positive, got %d", limit)
+	}
+	rowLimit, err := toInt32(limit)
+	if err != nil {
+		return 0, 0, fmt.Errorf("reaper batch limit: %w", err)
+	}
+	for _, to := range []domain.Status{domain.StatusRetryScheduled, domain.StatusPermanentlyFailed} {
+		if !domain.CanTransition(domain.StatusSending, to) {
+			return 0, 0, fmt.Errorf("moving notification from %s to %s: %w", domain.StatusSending, to, domain.ErrInvalidTransition)
+		}
+	}
+
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := sqlc.New(tx)
+
+		rows, err := q.ReapExpiredSending(ctx, sqlc.ReapExpiredSendingParams{
+			LeaseSeconds: lease.Seconds(),
+			RowLimit:     rowLimit,
+			RetryStatus:  string(domain.StatusRetryScheduled),
+			FailedStatus: string(domain.StatusPermanentlyFailed),
+			LastError:    leaseExpiredError,
+			Reason:       leaseExpiredReason,
+		})
+		if err != nil {
+			return fmt.Errorf("reaping expired sending notifications: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+
+		var (
+			retryIDs      []uuid.UUID
+			retryPayloads []string
+		)
+		for _, r := range rows {
+			if domain.Status(r.Status) != domain.StatusRetryScheduled {
+				failed++
+				continue
+			}
+			retried++
+			payload, err := json.Marshal(outboxPayload{
+				Channel:       domain.Channel(r.Channel),
+				Priority:      domain.Priority(r.Priority),
+				CorrelationID: deref(r.CorrelationID),
+			})
+			if err != nil {
+				return fmt.Errorf("encoding retry outbox payload of notification %s: %w", r.ID, err)
+			}
+			retryIDs = append(retryIDs, r.ID)
+			retryPayloads = append(retryPayloads, string(payload))
+		}
+
+		if len(retryIDs) > 0 {
+			if err := q.InsertDueOutboxBatch(ctx, sqlc.InsertDueOutboxBatchParams{
+				Ids:      retryIDs,
+				Payloads: retryPayloads,
+			}); err != nil {
+				return fmt.Errorf("inserting retry outbox rows: %w", err)
+			}
+			if err := q.NotifyOutbox(ctx); err != nil {
+				return fmt.Errorf("notifying relay: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("reaping expired deliveries: %w", err)
+	}
+	return retried, failed, nil
+}

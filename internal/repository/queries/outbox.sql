@@ -49,3 +49,41 @@ SELECT id FROM updated;
 -- already cancelled).
 DELETE FROM outbox
 WHERE id = ANY(@ids::bigint[]);
+
+-- name: ReapExpiredSending :many
+-- Moves up to row_limit deliveries whose sending lease has expired to retry_status (when
+-- attempts < max_attempts) or failed_status (when attempts are exhausted) and records a status event
+-- for each one, in one statement.
+WITH expired AS (
+    SELECT cur.id
+    FROM notifications AS cur
+    WHERE cur.status = 'sending'
+      AND cur.sending_started_at <= now() - make_interval(secs => @lease_seconds::double precision)
+    ORDER BY cur.sending_started_at, cur.id
+    LIMIT @row_limit
+    FOR UPDATE SKIP LOCKED
+), updated AS (
+    UPDATE notifications AS n
+    SET status             = CASE WHEN n.attempts < n.max_attempts THEN @retry_status::text ELSE @failed_status::text END,
+        sending_started_at = NULL,
+        last_error         = @last_error::text,
+        updated_at         = now()
+    FROM expired
+    WHERE n.id = expired.id
+    RETURNING n.id, n.channel, n.priority, n.correlation_id, n.status
+), events AS (
+    INSERT INTO notification_events (notification_id, from_status, to_status, reason)
+    SELECT updated.id, 'sending', updated.status, @reason::text
+    FROM updated
+)
+SELECT id, channel, priority, correlation_id, status
+FROM updated;
+
+-- name: InsertDueOutboxBatch :exec
+-- Inserts immediately due outbox rows (available_at = now()) for a batch of notifications in one
+-- statement.
+INSERT INTO outbox (notification_id, payload, available_at)
+SELECT t.id, t.payload::jsonb, now()
+FROM (
+    SELECT unnest(@ids::uuid[]) AS id, unnest(@payloads::text[]) AS payload
+) AS t;

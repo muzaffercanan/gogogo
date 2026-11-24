@@ -54,7 +54,9 @@ func run() error {
 		<-mqDone
 	}()
 
-	relay := outbox.NewRelay(repository.New(db), queue.NewPublisher(mq), log)
+	store := repository.New(db)
+
+	relay := outbox.NewRelay(store, queue.NewPublisher(mq), log)
 	relayDone := make(chan struct{})
 	go func() {
 		defer close(relayDone)
@@ -63,6 +65,17 @@ func run() error {
 	defer func() {
 		stop()
 		<-relayDone
+	}()
+
+	reaper := outbox.NewReaper(store, log)
+	reaperDone := make(chan struct{})
+	go func() {
+		defer close(reaperDone)
+		reaper.Run(ctx)
+	}()
+	defer func() {
+		stop()
+		<-reaperDone
 	}()
 
 	reg := ops.NewRegistry()

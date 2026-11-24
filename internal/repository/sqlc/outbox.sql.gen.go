@@ -61,6 +61,26 @@ func (q *Queries) DeleteOutbox(ctx context.Context, ids []int64) error {
 	return err
 }
 
+const insertDueOutboxBatch = `-- name: InsertDueOutboxBatch :exec
+INSERT INTO outbox (notification_id, payload, available_at)
+SELECT t.id, t.payload::jsonb, now()
+FROM (
+    SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS payload
+) AS t
+`
+
+type InsertDueOutboxBatchParams struct {
+	Ids      []uuid.UUID
+	Payloads []string
+}
+
+// Inserts immediately due outbox rows (available_at = now()) for a batch of notifications in one
+// statement.
+func (q *Queries) InsertDueOutboxBatch(ctx context.Context, arg InsertDueOutboxBatchParams) error {
+	_, err := q.db.Exec(ctx, insertDueOutboxBatch, arg.Ids, arg.Payloads)
+	return err
+}
+
 const insertOutbox = `-- name: InsertOutbox :exec
 INSERT INTO outbox (notification_id, payload, available_at)
 VALUES ($1, $2, COALESCE($3::timestamptz, now()))
@@ -134,6 +154,86 @@ func (q *Queries) QueueNotifications(ctx context.Context, arg QueueNotifications
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reapExpiredSending = `-- name: ReapExpiredSending :many
+WITH expired AS (
+    SELECT cur.id
+    FROM notifications AS cur
+    WHERE cur.status = 'sending'
+      AND cur.sending_started_at <= now() - make_interval(secs => $1::double precision)
+    ORDER BY cur.sending_started_at, cur.id
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+), updated AS (
+    UPDATE notifications AS n
+    SET status             = CASE WHEN n.attempts < n.max_attempts THEN $3::text ELSE $4::text END,
+        sending_started_at = NULL,
+        last_error         = $5::text,
+        updated_at         = now()
+    FROM expired
+    WHERE n.id = expired.id
+    RETURNING n.id, n.channel, n.priority, n.correlation_id, n.status
+), events AS (
+    INSERT INTO notification_events (notification_id, from_status, to_status, reason)
+    SELECT updated.id, 'sending', updated.status, $6::text
+    FROM updated
+)
+SELECT id, channel, priority, correlation_id, status
+FROM updated
+`
+
+type ReapExpiredSendingParams struct {
+	LeaseSeconds float64
+	RowLimit     int32
+	RetryStatus  string
+	FailedStatus string
+	LastError    string
+	Reason       string
+}
+
+type ReapExpiredSendingRow struct {
+	ID            uuid.UUID
+	Channel       string
+	Priority      string
+	CorrelationID *string
+	Status        string
+}
+
+// Moves up to row_limit deliveries whose sending lease has expired to retry_status (when
+// attempts < max_attempts) or failed_status (when attempts are exhausted) and records a status event
+// for each one, in one statement.
+func (q *Queries) ReapExpiredSending(ctx context.Context, arg ReapExpiredSendingParams) ([]ReapExpiredSendingRow, error) {
+	rows, err := q.db.Query(ctx, reapExpiredSending,
+		arg.LeaseSeconds,
+		arg.RowLimit,
+		arg.RetryStatus,
+		arg.FailedStatus,
+		arg.LastError,
+		arg.Reason,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReapExpiredSendingRow
+	for rows.Next() {
+		var i ReapExpiredSendingRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Channel,
+			&i.Priority,
+			&i.CorrelationID,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
