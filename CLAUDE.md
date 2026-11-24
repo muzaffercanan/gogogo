@@ -59,13 +59,23 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `internal/service`: use cases on domain types (validation, idempotency, cancellation); no HTTP.
 - `internal/domain`: notification model, state machine, validation rules, SMS encoding, error types.
 - `internal/queue`: RabbitMQ topology (exchanges, quorum work and dead-letter queues), the connection
-  supervisor that reconnects and redeclares it, and the publisher that waits for confirms.
+  supervisor that reconnects and redeclares it, the publisher that waits for confirms, the consumer that
+  buffers each work queue per priority, and the `queue_depth` collector.
+- `internal/outbox`: the relay (claims due outbox rows, queues and publishes them) and the reaper (recovers
+  deliveries whose `sending` lease expired), with their metrics.
+- `internal/worker`: delivery per channel: weighted priority picker, circuit breaker, rate-limit token,
+  sender pool; the delivery itself (`queued → sending`, ack, provider call, outcome), retry policy and
+  worker metrics.
+- `internal/ratelimit`: GCRA rate limiter in Redis (one Lua script reserves each send slot).
+- `internal/provider`: HTTP client for the provider (`Idempotency-Key`, answer classification).
 - `internal/repository/queries`: SQL queries; `sqlc` (config `sqlc.yaml`) generates
   `internal/repository/sqlc` from them and the migrations.
-- `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.
+- `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server,
+  exponential backoff with full jitter.
 - `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
 - `internal/testutil/pgtest`: PostgreSQL container for integration tests; one migrated database per test.
 - `internal/testutil/rabbittest`: RabbitMQ container for integration tests; one virtual host per test.
+- `internal/testutil/redistest`: Redis container for integration tests; one logical database per test.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
 - `docs/adr/`: architecture decision records.
 
@@ -78,6 +88,7 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - Table-driven tests; every bug fix comes with a test that reproduces it.
 - Code that talks to PostgreSQL, RabbitMQ or Redis is tested against real containers, not mocks. Those
   test files start with `//go:build integration`; database tests use `pgtest.Server.NewDatabase(t)`, broker
-  tests `rabbittest.Server.NewVHost(t)`.
+  tests `rabbittest.Server.NewVHost(t)`, Redis tests `redistest.Server.NewClient(t)` or `NewURL(t)`. Logic
+  that needs a controllable Redis clock (the rate limiter's script) is also tested on miniredis.
 - Never edit `*.gen.go` by hand: change the source (spec, SQL) and run `make generate`. Generated code is
   committed; CI fails if it is stale.
