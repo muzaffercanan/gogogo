@@ -281,9 +281,17 @@ func TestReapExpiredDeliveriesRetriesUnderMaxAndFailsExhausted(t *testing.T) {
 	exhaustedID := createStuckSending(ctx, t, store, db, 5, 5, 90*time.Second, nil)
 	freshID := createStuckSending(ctx, t, store, db, 1, 5, 10*time.Second, nil)
 
-	retried, failed, err := store.ReapExpiredDeliveries(ctx, 60*time.Second, 10)
+	reaped, err := store.ReapExpiredDeliveries(ctx, 60*time.Second, 10)
 	if err != nil {
 		t.Fatalf("ReapExpiredDeliveries: %v", err)
+	}
+	var retried, failed int
+	for _, d := range reaped {
+		if d.Status == domain.StatusRetryScheduled {
+			retried++
+		} else {
+			failed++
+		}
 	}
 	if retried != 1 || failed != 1 {
 		t.Fatalf("retried = %d, failed = %d; want 1, 1", retried, failed)
@@ -344,10 +352,10 @@ func TestReapExpiredDeliveriesRetriesUnderMaxAndFailsExhausted(t *testing.T) {
 		t.Errorf("retry outbox row = (%s, dueNow=%v), want (%s, true)", outboxNotifID, dueNow, retryID)
 	}
 
-	if _, _, err := store.ReapExpiredDeliveries(ctx, 0, 10); err == nil {
+	if _, err := store.ReapExpiredDeliveries(ctx, 0, 10); err == nil {
 		t.Error("ReapExpiredDeliveries with lease 0 succeeded, want an error")
 	}
-	if _, _, err := store.ReapExpiredDeliveries(ctx, time.Minute, 0); err == nil {
+	if _, err := store.ReapExpiredDeliveries(ctx, time.Minute, 0); err == nil {
 		t.Error("ReapExpiredDeliveries with limit 0 succeeded, want an error")
 	}
 }

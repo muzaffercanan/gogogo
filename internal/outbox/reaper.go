@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/muzaffercanan/gogogo/internal/domain"
+	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/repository"
 )
 
@@ -39,13 +41,27 @@ func NewReaper(store *repository.Store, log *slog.Logger) *Reaper {
 	}
 }
 
-// Once runs one reaper batch step bounded by the step timeout. It returns the number of expired
-// deliveries moved to retry_scheduled and permanently_failed.
+// Once runs one reaper batch step bounded by the step timeout. Each reaped delivery is logged after
+// commit with its correlation ID. It returns the number of expired deliveries moved to retry_scheduled
+// and permanently_failed.
 func (r *Reaper) Once(ctx context.Context) (retried, failed int, err error) {
 	stepCtx, cancel := context.WithTimeout(ctx, r.stepTimeout)
 	defer cancel()
 
-	return r.store.ReapExpiredDeliveries(stepCtx, r.lease, r.batchSize)
+	reaped, err := r.store.ReapExpiredDeliveries(stepCtx, r.lease, r.batchSize)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, d := range reaped {
+		if d.Status == domain.StatusRetryScheduled {
+			retried++
+		} else {
+			failed++
+		}
+		r.log.InfoContext(logging.WithCorrelationID(ctx, d.CorrelationID), "reaped expired delivery",
+			"notification_id", d.NotificationID, "channel", d.Channel, "priority", d.Priority, "status", d.Status)
+	}
+	return retried, failed, nil
 }
 
 // Run scans for expired sending leases until ctx ends. A full batch is followed at once by another step

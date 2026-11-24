@@ -7,7 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	amqp "github.com/rabbitmq/amqp091-go"
+
 	"github.com/muzaffercanan/gogogo/internal/domain"
+	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 )
 
@@ -43,5 +46,32 @@ func TestPublishRejectsAMessageWithoutAQueue(t *testing.T) {
 				t.Errorf("Publish = %v, want an error about message m1 before connecting", err)
 			}
 		})
+	}
+}
+
+func TestCorrelationHeadersRoundTripAndContextPropagation(t *testing.T) {
+	if got := queue.CorrelationHeaders(""); got != nil {
+		t.Errorf("CorrelationHeaders(\"\") = %v, want nil", got)
+	}
+	if got := queue.CorrelationID(nil); got != "" {
+		t.Errorf("CorrelationID(nil) = %q, want \"\"", got)
+	}
+	if got := queue.CorrelationID(amqp.Table{queue.CorrelationHeader: 123}); got != "" {
+		t.Errorf("CorrelationID(non-string) = %q, want \"\"", got)
+	}
+
+	headers := queue.CorrelationHeaders("corr-42")
+	if got := queue.CorrelationID(headers); got != "corr-42" {
+		t.Errorf("CorrelationID(CorrelationHeaders(\"corr-42\")) = %q, want \"corr-42\"", got)
+	}
+
+	ctx := queue.WithCorrelationID(t.Context(), headers)
+	if got := logging.CorrelationID(ctx); got != "corr-42" {
+		t.Errorf("logging.CorrelationID(ctx) = %q, want \"corr-42\"", got)
+	}
+
+	unchanged := queue.WithCorrelationID(logging.WithCorrelationID(t.Context(), "existing"), nil)
+	if got := logging.CorrelationID(unchanged); got != "existing" {
+		t.Errorf("WithCorrelationID with empty headers overwrote existing correlation ID: got %q, want \"existing\"", got)
 	}
 }

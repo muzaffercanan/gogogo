@@ -8,7 +8,37 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
+	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 )
+
+// CorrelationHeader is the AMQP header key that carries a notification's correlation ID from the
+// relay to the worker.
+const CorrelationHeader = "correlation_id"
+
+// CorrelationHeaders returns an AMQP header table carrying id under CorrelationHeader, or nil when id
+// is empty.
+func CorrelationHeaders(id string) amqp.Table {
+	if id == "" {
+		return nil
+	}
+	return amqp.Table{CorrelationHeader: id}
+}
+
+// CorrelationID extracts the correlation ID from an AMQP delivery's headers, or returns "" if none is
+// present.
+func CorrelationID(headers amqp.Table) string {
+	id, _ := headers[CorrelationHeader].(string)
+	return id
+}
+
+// WithCorrelationID returns a copy of ctx carrying the correlation ID from headers (if any), so records
+// logged with the returned context include a correlation_id attribute.
+func WithCorrelationID(ctx context.Context, headers amqp.Table) context.Context {
+	if id := CorrelationID(headers); id != "" {
+		return logging.WithCorrelationID(ctx, id)
+	}
+	return ctx
+}
 
 // Message is a notification to route to the work queue of its channel and priority.
 type Message struct {

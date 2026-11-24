@@ -3,9 +3,11 @@
 package outbox_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
+	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 	"github.com/muzaffercanan/gogogo/internal/repository"
 )
@@ -290,6 +293,94 @@ func TestRelayRunPollingFallbackDispatchesScheduledRowWhenDue(t *testing.T) {
 	if d := receive(t, ch, qName); d.MessageId != id.String() {
 		t.Errorf("received message id = %q, want %q", d.MessageId, id)
 	}
+}
+
+func TestCorrelationIDPropagatesThroughOutboxHeadersAndLogs(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	pub, vhost := connectedPublisher(t)
+
+	var logBuf bytes.Buffer
+	log := logging.New(&logBuf, "info")
+	relay := outbox.NewRelay(store, pub, log)
+	reaper := outbox.NewReaper(store, log)
+
+	const corrID = "corr-e2e-99"
+	id := uuid.Must(uuid.NewV7())
+	if _, _, err := store.CreateNotification(ctx, domain.NewNotification{
+		ID:            id,
+		Channel:       domain.ChannelSMS,
+		Priority:      domain.PriorityHigh,
+		Recipient:     "+905551234567",
+		Content:       "hello",
+		MaxAttempts:   5,
+		CorrelationID: corrID,
+	}); err != nil {
+		t.Fatalf("CreateNotification: %v", err)
+	}
+
+	if _, _, err := relay.Once(ctx); err != nil {
+		t.Fatalf("first relay.Once: %v", err)
+	}
+
+	ch := openChannel(t, dial(t, vhost))
+	qName := queue.QueueName(domain.ChannelSMS, domain.PriorityHigh)
+	firstDelivery := receive(t, ch, qName)
+	if got := queue.CorrelationID(firstDelivery.Headers); got != corrID {
+		t.Errorf("first delivery correlation_id header = %q, want %q", got, corrID)
+	}
+	assertLogEntry(t, logBuf.String(), "notification queued", id.String(), corrID)
+
+	// Simulate the worker starting delivery and getting stuck past the 60 s lease.
+	if _, err := db.Exec(ctx,
+		`UPDATE notifications
+		SET status = 'sending', attempts = 1, sending_started_at = now() - interval '2 minutes'
+		WHERE id = $1`, id,
+	); err != nil {
+		t.Fatalf("forcing stuck sending: %v", err)
+	}
+
+	logBuf.Reset()
+	if retried, failed, err := reaper.Once(ctx); err != nil || retried != 1 || failed != 0 {
+		t.Fatalf("reaper.Once = (%d, %d, %v), want (1, 0, nil)", retried, failed, err)
+	}
+	assertLogEntry(t, logBuf.String(), "reaped expired delivery", id.String(), corrID)
+
+	logBuf.Reset()
+	if _, _, err := relay.Once(ctx); err != nil {
+		t.Fatalf("second relay.Once: %v", err)
+	}
+	assertLogEntry(t, logBuf.String(), "notification queued", id.String(), corrID)
+
+	retryDelivery := receive(t, ch, qName)
+	if got := queue.CorrelationID(retryDelivery.Headers); got != corrID {
+		t.Errorf("retry delivery correlation_id header = %q, want %q", got, corrID)
+	}
+
+	var workerBuf bytes.Buffer
+	workerLog := logging.New(&workerBuf, "info")
+	workerCtx := queue.WithCorrelationID(ctx, retryDelivery.Headers)
+	workerLog.InfoContext(workerCtx, "worker received delivery", "notification_id", retryDelivery.MessageId)
+	assertLogEntry(t, workerBuf.String(), "worker received delivery", id.String(), corrID)
+}
+
+func assertLogEntry(t *testing.T, output, wantMsg, wantNotificationID, wantCorrelationID string) {
+	t.Helper()
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decoding log line %q: %v", line, err)
+		}
+		if entry["msg"] == wantMsg && entry["notification_id"] == wantNotificationID && entry["correlation_id"] == wantCorrelationID {
+			return
+		}
+	}
+	t.Errorf("log output %s did not contain msg=%q notification_id=%q correlation_id=%q",
+		output, wantMsg, wantNotificationID, wantCorrelationID)
 }
 
 func createNotification(

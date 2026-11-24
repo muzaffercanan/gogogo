@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 	"github.com/muzaffercanan/gogogo/internal/repository"
 )
@@ -65,12 +66,13 @@ func NewRelay(store *repository.Store, pub Publisher, log *slog.Logger) *Relay {
 
 // Once runs one outbox batch step: it claims up to batchSize due rows, moves their notifications to
 // queued, publishes them with confirms and deletes the claimed rows, all within one transaction bounded
-// by the step timeout.
+// by the step timeout. Each published notification is logged after commit with its correlation ID.
 func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 	stepCtx, cancel := context.WithTimeout(ctx, r.stepTimeout)
 	defer cancel()
 
-	return r.store.DispatchOutbox(stepCtx, r.batchSize, func(ctx context.Context, items []repository.OutboxItem) error {
+	var dispatched []repository.OutboxItem
+	claimed, published, err = r.store.DispatchOutbox(stepCtx, r.batchSize, func(ctx context.Context, items []repository.OutboxItem) error {
 		msgs := make([]queue.Message, len(items))
 		for i, it := range items {
 			body, err := json.Marshal(MessageBody{NotificationID: it.NotificationID})
@@ -82,10 +84,23 @@ func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 				Priority: it.Priority,
 				ID:       it.NotificationID.String(),
 				Body:     body,
+				Headers:  queue.CorrelationHeaders(it.CorrelationID),
 			}
 		}
-		return r.pub.Publish(ctx, msgs)
+		if err := r.pub.Publish(ctx, msgs); err != nil {
+			return err
+		}
+		dispatched = items
+		return nil
 	})
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, it := range dispatched {
+		r.log.InfoContext(logging.WithCorrelationID(ctx, it.CorrelationID), "notification queued",
+			"notification_id", it.NotificationID, "channel", it.Channel, "priority", it.Priority)
+	}
+	return claimed, published, nil
 }
 
 // Run drains due outbox rows until ctx ends. It wakes immediately when PostgreSQL delivers a NOTIFY on
