@@ -10,6 +10,8 @@ x-app: &app
     DATABASE_URL: postgres://notify:notify@postgres:5432/notify?sslmode=disable
     AMQP_URL: amqp://guest:guest@rabbitmq:5672/
     REDIS_URL: redis://redis:6379/0
+    # Spans go to Jaeger over OTLP/HTTP. Set it to an empty value in .env to turn tracing off.
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
 
 services:
   postgres:
@@ -44,6 +46,13 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0
+    # The bundled configuration with in-memory storage, bounded to the latest 20 000 traces (about
+    # 12 KB each, so about 240 MB).
+    command: ["--set=extensions.jaeger_storage.backends.some_storage.memory.max_traces=20000"]
+    ports: ["16686:16686", "4318:4318"]
 
   migrate:
     image: migrate/migrate:v4.20.1

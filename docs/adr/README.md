@@ -19,3 +19,4 @@ Short records of the significant design decisions: context, decision, alternativ
 | [0013](0013-rabbitmq-topology-publishing-and-reconnection.md) | RabbitMQ topology, publishing and reconnection | Accepted |
 | [0014](0014-provider-response-classification.md) | Provider response classification and Retry-After | Accepted |
 | [0015](0015-ack-after-the-sending-transition.md) | Acknowledge a message once its notification is sending | Accepted |
+| [0016](0016-tracing-with-opentelemetry.md) | Tracing with OpenTelemetry, exported to Jaeger | Accepted |

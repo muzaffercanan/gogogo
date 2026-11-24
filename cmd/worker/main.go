@@ -17,6 +17,7 @@ import (
 	"github.com/muzaffercanan/gogogo/internal/platform/httpserver"
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
 	"github.com/muzaffercanan/gogogo/internal/platform/ops"
+	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 	"github.com/muzaffercanan/gogogo/internal/provider"
 	"github.com/muzaffercanan/gogogo/internal/queue"
 	"github.com/muzaffercanan/gogogo/internal/ratelimit"
@@ -40,6 +41,19 @@ func run() error {
 		return err
 	}
 	log := logging.New(os.Stdout, cfg.LogLevel).With("service", "worker")
+
+	tp, err := tracing.Setup(ctx, "worker", log)
+	if err != nil {
+		return err
+	}
+	// Deferred first, so it runs last: after everything that makes spans has stopped.
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), tracing.ShutdownTimeout)
+		defer cancel()
+		if err := tp.Shutdown(flushCtx); err != nil {
+			log.Warn("flushing traces", "error", err)
+		}
+	}()
 
 	db, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {

@@ -38,7 +38,7 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 
 | Task | Command |
 |---|---|
-| Start everything (Postgres, RabbitMQ, Redis, migrations, api, relay, worker, mock provider) | `docker compose up --build -d` or `make up` |
+| Start everything (Postgres, RabbitMQ, Redis, Jaeger, migrations, api, relay, worker, mock provider) | `docker compose up --build -d` or `make up` |
 | Stop / wipe data | `make down` / `docker compose down -v` |
 | Unit tests | `make test` (`go test -count=1 ./...`) |
 | Integration tests (throwaway containers, needs Docker) | `make test-integration` (`go test -tags integration ./...`) |
@@ -47,7 +47,8 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 | Build binaries | `make build` → `./bin` |
 | Regenerate code after changing `api/openapi.yaml`, SQL queries or migrations | `make generate` (oapi-codegen + sqlc; sqlc runs in Docker) |
 
-Ports: api 8080, relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest).
+Ports: api 8080, relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest),
+Jaeger UI 16686 (OTLP/HTTP on 4318).
 Every process serves `/health/live`, `/health/ready` and `/metrics`.
 
 ## Layout
@@ -71,7 +72,8 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `internal/repository/queries`: SQL queries; `sqlc` (config `sqlc.yaml`) generates
   `internal/repository/sqlc` from them and the migrations.
 - `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server,
-  exponential backoff with full jitter.
+  exponential backoff with full jitter, tracing (OpenTelemetry over OTLP/HTTP, configured by the
+  standard `OTEL_*` variables).
 - `internal/provider/mockserver`: fake provider with configurable latency and failure rates.
 - `internal/testutil/pgtest`: PostgreSQL container for integration tests; one migrated database per test.
 - `internal/testutil/rabbittest`: RabbitMQ container for integration tests; one virtual host per test.
