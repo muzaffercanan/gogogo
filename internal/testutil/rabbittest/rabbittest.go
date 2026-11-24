@@ -9,6 +9,7 @@ package rabbittest
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -110,6 +111,29 @@ func (s *Server) NewVHost(tb testing.TB) string {
 		}
 	})
 	return s.amqpURL + "/" + path
+}
+
+// SetPolicy applies a queue policy named name, with a definition such as
+// {"max-length":0,"overflow":"reject-publish"}, to the queues of vhostURL (a URL from NewVHost) whose
+// names match pattern. The broker applies policies asynchronously, shortly after this returns.
+func (s *Server) SetPolicy(tb testing.TB, vhostURL, name, pattern, definition string) {
+	tb.Helper()
+	u, err := url.Parse(vhostURL)
+	if err != nil {
+		tb.Fatalf("parsing %s: %v", vhostURL, err)
+	}
+	vhost := strings.TrimPrefix(u.EscapedPath(), "/")
+	body, err := json.Marshal(struct {
+		Pattern    string          `json:"pattern"`
+		Definition json.RawMessage `json:"definition"`
+		ApplyTo    string          `json:"apply-to"`
+	}{pattern, json.RawMessage(definition), "queues"})
+	if err != nil {
+		tb.Fatalf("encoding policy %s: %v", name, err)
+	}
+	if err := s.manage(tb.Context(), http.MethodPut, "/api/policies/"+vhost+"/"+url.PathEscape(name), string(body)); err != nil {
+		tb.Fatalf("setting policy %s on %s: %v", name, vhost, err)
+	}
 }
 
 // deleteTimeout bounds deleting a virtual host at the end of a test.

@@ -20,9 +20,10 @@ notification `queued`, so broker durability still matters.
 - **Declaration.** The relay and the worker declare the whole topology on every connect. Declaring is
   idempotent; a queue that exists with other arguments fails the declaration (`PRECONDITION_FAILED`) and
   the process stays unready.
-- **Publishing.** Messages are persistent and published with `mandatory`. A batch is published in full,
-  then every confirm is awaited. A nack, a return (unroutable message) or a timeout fails the whole batch:
-  the relay rolls back and publishes the rows again, and the worker's conditional update drops duplicates.
+- **Publishing.** Messages are persistent and published with `mandatory`. Each batch gets a channel of its
+  own in confirm mode, closed afterwards. A batch is published in full, then every confirm is awaited. A
+  nack, a return (unroutable message) or a timeout fails the whole batch: the relay rolls back and
+  publishes the rows again, and the worker's conditional update drops duplicates.
 - **While disconnected,** publishing fails at once with `ErrNotConnected`. The relay holds no transaction
   open during an outage; the outbox absorbs it.
 - **Reconnection.** A supervisor owns the connection. It dials at startup and again after every
@@ -37,6 +38,8 @@ notification `queued`, so broker durability still matters.
 - **Confirming one message at a time.** Simple, but one round trip per message during a burst.
 - **Asynchronous confirm tracking.** Highest throughput, but it does not fit a relay that claims,
   publishes and deletes in one transaction.
+- **One long-lived publishing channel.** Saves the per-batch setup, but needs reopening after errors and
+  matching returns to batches, and serializes callers.
 - **Waiting for the connection inside publish.** Holds the relay's transaction and row locks for as long
   as the outage lasts.
 - **amqp091-go's recovery.** Restores channels and consumers by itself, and resolves pending confirms as
@@ -51,5 +54,8 @@ notification `queued`, so broker durability still matters.
   keeps crashing workers ends up in the DLQ while its notification stays `queued`. Dead-lettering is
   at-most-once by default.
 - One failed message makes the relay publish its whole batch again.
+- The per-batch channel costs about 4.5 ms on the development machine (Docker Desktop on Windows), against
+  23–26 ms to publish and confirm 100 persistent messages into a quorum queue: roughly 4,000 messages per
+  second, well above the 300 msg/s delivery cap.
 - A process starts and serves `/health/live` while the broker is down; readiness follows the connection.
 - The reconnect logic is ours to test and maintain.

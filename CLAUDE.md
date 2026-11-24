@@ -58,8 +58,8 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `internal/api/oapi`: types and strict server interface generated from the spec (`oapi.gen.go`).
 - `internal/service`: use cases on domain types (validation, idempotency, cancellation); no HTTP.
 - `internal/domain`: notification model, state machine, validation rules, SMS encoding, error types.
-- `internal/queue`: RabbitMQ topology (exchanges, quorum work and dead-letter queues) and the connection
-  supervisor that reconnects and redeclares it.
+- `internal/queue`: RabbitMQ topology (exchanges, quorum work and dead-letter queues), the connection
+  supervisor that reconnects and redeclares it, and the publisher that waits for confirms.
 - `internal/repository/queries`: SQL queries; `sqlc` (config `sqlc.yaml`) generates
   `internal/repository/sqlc` from them and the migrations.
 - `internal/platform`: config (env), logging (slog JSON + correlation ID), health, ops mux, HTTP server.
