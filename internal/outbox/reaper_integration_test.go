@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/outbox"
@@ -24,11 +25,11 @@ func TestReaperAndRelayRecoverStuckDeliveriesAndFailExhausted(t *testing.T) {
 	pub, vhost := connectedPublisher(t)
 	log := slog.New(slog.NewTextHandler(t.Output(), nil))
 
-	relay := outbox.NewRelay(store, pub, log)
+	relay := outbox.NewRelay(store, pub, discardMetrics(), log)
 	// A 30 s poll interval requires the reaper's NOTIFY outbox to wake the relay.
 	outbox.SetTiming(relay, 100, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
 
-	reaper := outbox.NewReaper(store, log)
+	reaper := outbox.NewReaper(store, discardMetrics(), log)
 	// Batch size 2 with 3 expired rows and a 30 s scan interval requires the reaper to chain full
 	// batches immediately.
 	outbox.SetReaperTiming(reaper, 2, 60*time.Second, 30*time.Second)
@@ -97,6 +98,43 @@ func TestReaperAndRelayRecoverStuckDeliveriesAndFailExhausted(t *testing.T) {
 	}
 	if gotExhausted.Status != domain.StatusPermanentlyFailed || gotExhausted.LastError != "delivery lease expired" {
 		t.Errorf("exhausted notification = %+v; want status permanently_failed, last_error \"delivery lease expired\"", gotExhausted)
+	}
+}
+
+func TestReaperOnceCountsRecoveredDeliveriesByChannelAndStatus(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	reg := prometheus.NewRegistry()
+	reaper := outbox.NewReaper(store, outbox.NewMetrics(reg), slog.New(slog.NewTextHandler(t.Output(), nil)))
+
+	createStuckSending(ctx, t, store, db, domain.ChannelSMS, domain.PriorityHigh, 1, 5, 2*time.Minute)
+	createStuckSending(ctx, t, store, db, domain.ChannelPush, domain.PriorityLow, 4, 5, 2*time.Minute)
+	createStuckSending(ctx, t, store, db, domain.ChannelEmail, domain.PriorityNormal, 5, 5, 2*time.Minute)
+	createStuckSending(ctx, t, store, db, domain.ChannelEmail, domain.PriorityHigh, 1, 5, 10*time.Second) // lease not expired
+
+	if retried, failed, err := reaper.Once(ctx); err != nil || retried != 2 || failed != 1 {
+		t.Fatalf("reaper.Once = (%d, %d, %v), want (2, 1, nil)", retried, failed, err)
+	}
+
+	for _, want := range []struct {
+		channel domain.Channel
+		status  domain.Status
+		value   float64
+	}{
+		{domain.ChannelSMS, domain.StatusRetryScheduled, 1},
+		{domain.ChannelPush, domain.StatusRetryScheduled, 1},
+		{domain.ChannelEmail, domain.StatusPermanentlyFailed, 1},
+		{domain.ChannelEmail, domain.StatusRetryScheduled, 0},
+		{domain.ChannelSMS, domain.StatusPermanentlyFailed, 0},
+	} {
+		v, ok := metricValue(t, reg, "reaper_recovered_total", "channel", string(want.channel), "status", string(want.status))
+		if !ok || v != want.value {
+			t.Errorf("reaper_recovered_total{%s,%s} = %v (present %v), want %v", want.channel, want.status, v, ok, want.value)
+		}
+	}
+	if v, ok := metricValue(t, reg, "reaper_errors_total"); !ok || v != 0 {
+		t.Errorf("reaper_errors_total = %v (present %v), want 0", v, ok)
 	}
 }
 

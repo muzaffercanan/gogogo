@@ -251,3 +251,21 @@ func (s *Store) ReapExpiredDeliveries(ctx context.Context, lease time.Duration, 
 	}
 	return reaped, nil
 }
+
+// OutboxBacklog is the number of outbox rows waiting for the relay.
+type OutboxBacklog struct {
+	// Due rows have an available_at that has passed: the relay can dispatch them now.
+	Due int64
+	// Scheduled rows have an available_at in the future: scheduled sends and retries in backoff.
+	Scheduled int64
+}
+
+// CountOutboxBacklog counts the outbox rows that are due and the ones scheduled for later, by the
+// database clock.
+func (s *Store) CountOutboxBacklog(ctx context.Context) (OutboxBacklog, error) {
+	row, err := sqlc.New(s.pool).CountOutboxBacklog(ctx)
+	if err != nil {
+		return OutboxBacklog{}, fmt.Errorf("counting outbox backlog: %w", err)
+	}
+	return OutboxBacklog{Due: row.Due, Scheduled: row.Scheduled}, nil
+}

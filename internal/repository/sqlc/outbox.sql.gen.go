@@ -49,6 +49,26 @@ func (q *Queries) ClaimDueOutbox(ctx context.Context, rowLimit int32) ([]ClaimDu
 	return items, nil
 }
 
+const countOutboxBacklog = `-- name: CountOutboxBacklog :one
+SELECT count(*) FILTER (WHERE available_at <= now()) AS due,
+       count(*) FILTER (WHERE available_at > now())  AS scheduled
+FROM outbox
+`
+
+type CountOutboxBacklogRow struct {
+	Due       int64
+	Scheduled int64
+}
+
+// Counts outbox rows that are due (available_at has passed) and scheduled (available_at is still in
+// the future), for the outbox_backlog metric.
+func (q *Queries) CountOutboxBacklog(ctx context.Context) (CountOutboxBacklogRow, error) {
+	row := q.db.QueryRow(ctx, countOutboxBacklog)
+	var i CountOutboxBacklogRow
+	err := row.Scan(&i.Due, &i.Scheduled)
+	return i, err
+}
+
 const deleteOutbox = `-- name: DeleteOutbox :exec
 DELETE FROM outbox
 WHERE id = ANY($1::bigint[])

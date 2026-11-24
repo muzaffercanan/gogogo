@@ -19,8 +19,9 @@ const (
 
 // Reaper recovers notifications stuck in status sending past their delivery lease.
 type Reaper struct {
-	store *repository.Store
-	log   *slog.Logger
+	store   *repository.Store
+	metrics *Metrics
+	log     *slog.Logger
 
 	lease       time.Duration
 	interval    time.Duration
@@ -29,10 +30,11 @@ type Reaper struct {
 }
 
 // NewReaper returns a reaper that scans store every 15 s for deliveries in status sending for at least
-// 60 s.
-func NewReaper(store *repository.Store, log *slog.Logger) *Reaper {
+// 60 s and records what it recovers in metrics.
+func NewReaper(store *repository.Store, metrics *Metrics, log *slog.Logger) *Reaper {
 	return &Reaper{
 		store:       store,
+		metrics:     metrics,
 		log:         log,
 		lease:       reaperLease,
 		interval:    reaperInterval,
@@ -41,17 +43,21 @@ func NewReaper(store *repository.Store, log *slog.Logger) *Reaper {
 	}
 }
 
-// Once runs one reaper batch step bounded by the step timeout. Each reaped delivery is logged after
-// commit with its correlation ID. It returns the number of expired deliveries moved to retry_scheduled
-// and permanently_failed.
+// Once runs one reaper batch step bounded by the step timeout. Each reaped delivery is logged and
+// counted after commit; a failed step counts as a reaper error unless ctx itself ended (shutdown). It
+// returns the number of expired deliveries moved to retry_scheduled and permanently_failed.
 func (r *Reaper) Once(ctx context.Context) (retried, failed int, err error) {
 	stepCtx, cancel := context.WithTimeout(ctx, r.stepTimeout)
 	defer cancel()
 
 	reaped, err := r.store.ReapExpiredDeliveries(stepCtx, r.lease, r.batchSize)
 	if err != nil {
+		if ctx.Err() == nil {
+			r.metrics.reaperErrors.Inc()
+		}
 		return 0, 0, err
 	}
+	r.metrics.reaped(reaped)
 	for _, d := range reaped {
 		if d.Status == domain.StatusRetryScheduled {
 			retried++

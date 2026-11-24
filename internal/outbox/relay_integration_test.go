@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
@@ -27,7 +28,8 @@ func TestRelayOncePublishesDueNotificationsToTheirWorkQueues(t *testing.T) {
 	db := pg.NewDatabase(t)
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
-	relay := outbox.NewRelay(store, pub, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	reg := prometheus.NewRegistry()
+	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), slog.New(slog.NewTextHandler(t.Output(), nil)))
 
 	pendingID := createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
 	retryID := createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityLow, nil)
@@ -49,6 +51,30 @@ func TestRelayOncePublishesDueNotificationsToTheirWorkQueues(t *testing.T) {
 	}
 	if claimed != 3 || published != 2 {
 		t.Fatalf("claimed = %d, published = %d; want 3, 2", claimed, published)
+	}
+	for _, want := range []struct {
+		name   string
+		labels []string
+		value  float64
+	}{
+		{"outbox_published_total", []string{"channel", "sms", "priority", "high"}, 1},
+		{"outbox_published_total", []string{"channel", "email", "priority", "low"}, 1},
+		{"outbox_published_total", []string{"channel", "push", "priority", "normal"}, 0}, // cancelled
+		{"outbox_published_total", []string{"channel", "sms", "priority", "low"}, 0},     // scheduled
+		{"outbox_skipped_total", nil, 1},
+		{"outbox_dispatch_duration_seconds", nil, 1},
+		{"outbox_dispatch_errors_total", nil, 0},
+	} {
+		if v, ok := metricValue(t, reg, want.name, want.labels...); !ok || v != want.value {
+			t.Errorf("%s%v = %v (present %v), want %v", want.name, want.labels, v, ok, want.value)
+		}
+	}
+	// An idle step (nothing due) is not a dispatch and must not be timed.
+	if claimed, _, err := relay.Once(ctx); err != nil || claimed != 0 {
+		t.Fatalf("idle Once = (%d, %v), want (0, nil)", claimed, err)
+	}
+	if v, _ := metricValue(t, reg, "outbox_dispatch_duration_seconds"); v != 1 {
+		t.Errorf("outbox_dispatch_duration_seconds count after an idle step = %v, want 1", v)
 	}
 
 	ch := openChannel(t, dial(t, vhost))
@@ -110,7 +136,8 @@ func TestRelayOnceRollsBackWhenBrokerRejectsPublish(t *testing.T) {
 	db := pg.NewDatabase(t)
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
-	relay := outbox.NewRelay(store, pub, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	reg := prometheus.NewRegistry()
+	relay := outbox.NewRelay(store, pub, outbox.NewMetrics(reg), slog.New(slog.NewTextHandler(t.Output(), nil)))
 
 	id := createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityNormal, nil)
 
@@ -124,6 +151,19 @@ func TestRelayOnceRollsBackWhenBrokerRejectsPublish(t *testing.T) {
 	if _, _, err := relay.Once(ctx); err == nil {
 		t.Fatalf("Once with %s deleted succeeded, want an error", qName)
 	}
+	assertRelayCounts := func(when string, errors, published, steps float64) {
+		t.Helper()
+		if v, _ := metricValue(t, reg, "outbox_dispatch_errors_total"); v != errors {
+			t.Errorf("%s: outbox_dispatch_errors_total = %v, want %v", when, v, errors)
+		}
+		if v, _ := metricValue(t, reg, "outbox_published_total", "channel", "email", "priority", "normal"); v != published {
+			t.Errorf("%s: outbox_published_total{email,normal} = %v, want %v", when, v, published)
+		}
+		if v, _ := metricValue(t, reg, "outbox_dispatch_duration_seconds"); v != steps {
+			t.Errorf("%s: outbox_dispatch_duration_seconds count = %v, want %v", when, v, steps)
+		}
+	}
+	assertRelayCounts("after rollback", 1, 0, 0)
 
 	got, err := store.GetNotification(ctx, id)
 	if err != nil {
@@ -147,6 +187,7 @@ func TestRelayOnceRollsBackWhenBrokerRejectsPublish(t *testing.T) {
 	if err != nil || claimed != 1 || published != 1 {
 		t.Fatalf("Once after recovery = (%d, %d, %v), want (1, 1, nil)", claimed, published, err)
 	}
+	assertRelayCounts("after recovery", 1, 1, 1)
 	d := receive(t, admin, qName)
 	if d.MessageId != id.String() {
 		t.Errorf("received message id = %q, want %q", d.MessageId, id)
@@ -162,7 +203,7 @@ func TestRelayRunDrainsMultiBatchBacklogAndRecoversFromOutage(t *testing.T) {
 	sup := supervise(t, url)
 	pub := queue.NewPublisher(sup)
 
-	relay := outbox.NewRelay(store, pub, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, discardMetrics(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	// Poll interval is 30 s so draining 7 rows with batch size 3 must chain full batches immediately
 	// rather than waiting for the next poll tick.
 	outbox.SetTiming(relay, 3, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
@@ -220,7 +261,7 @@ func TestRelayRunWakesOnNotifyWithoutWaitingForPoll(t *testing.T) {
 	db := pg.NewDatabase(t)
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
-	relay := outbox.NewRelay(store, pub, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, discardMetrics(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	// A 30 s poll interval guarantees only LISTEN/NOTIFY can wake the relay within receive's 5 s timeout.
 	outbox.SetTiming(relay, 100, 30*time.Second, 10*time.Millisecond, 50*time.Millisecond)
 
@@ -265,7 +306,7 @@ func TestRelayRunPollingFallbackDispatchesScheduledRowWhenDue(t *testing.T) {
 	db := pg.NewDatabase(t)
 	store := repository.New(db)
 	pub, vhost := connectedPublisher(t)
-	relay := outbox.NewRelay(store, pub, slog.New(slog.NewTextHandler(t.Output(), nil)))
+	relay := outbox.NewRelay(store, pub, discardMetrics(), slog.New(slog.NewTextHandler(t.Output(), nil)))
 	outbox.SetTiming(relay, 100, 50*time.Millisecond, 10*time.Millisecond, 50*time.Millisecond)
 
 	// NOTIFY fires at creation while available_at is still in the future; no new NOTIFY fires when the
@@ -295,6 +336,44 @@ func TestRelayRunPollingFallbackDispatchesScheduledRowWhenDue(t *testing.T) {
 	}
 }
 
+func TestBacklogCollectorReportsDueAndScheduledOutboxRows(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+	pub, _ := connectedPublisher(t)
+	log := slog.New(slog.NewTextHandler(t.Output(), nil))
+	relay := outbox.NewRelay(store, pub, discardMetrics(), log)
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(outbox.NewBacklogCollector(store, log))
+
+	future := time.Now().UTC().Add(time.Hour)
+	createNotification(ctx, t, store, domain.ChannelSMS, domain.PriorityHigh, nil)
+	createNotification(ctx, t, store, domain.ChannelEmail, domain.PriorityLow, nil)
+	createNotification(ctx, t, store, domain.ChannelPush, domain.PriorityNormal, &future)
+
+	assertBacklog := func(when string, due, scheduled float64) {
+		t.Helper()
+		for _, want := range []struct {
+			state string
+			value float64
+		}{{"due", due}, {"scheduled", scheduled}} {
+			if v, ok := metricValue(t, reg, "outbox_backlog", "state", want.state); !ok || v != want.value {
+				t.Errorf("%s: outbox_backlog{state=%q} = %v (present %v), want %v", when, want.state, v, ok, want.value)
+			}
+		}
+		if v, ok := metricValue(t, reg, "outbox_backlog_query_errors_total"); !ok || v != 0 {
+			t.Errorf("%s: outbox_backlog_query_errors_total = %v (present %v), want 0", when, v, ok)
+		}
+	}
+	assertBacklog("before dispatch", 2, 1)
+
+	if claimed, published, err := relay.Once(ctx); err != nil || claimed != 2 || published != 2 {
+		t.Fatalf("relay.Once = (%d, %d, %v), want (2, 2, nil)", claimed, published, err)
+	}
+	assertBacklog("after dispatch", 0, 1)
+}
+
 func TestCorrelationIDPropagatesThroughOutboxHeadersAndLogs(t *testing.T) {
 	ctx := context.Background()
 	db := pg.NewDatabase(t)
@@ -303,8 +382,8 @@ func TestCorrelationIDPropagatesThroughOutboxHeadersAndLogs(t *testing.T) {
 
 	var logBuf bytes.Buffer
 	log := logging.New(&logBuf, "info")
-	relay := outbox.NewRelay(store, pub, log)
-	reaper := outbox.NewReaper(store, log)
+	relay := outbox.NewRelay(store, pub, discardMetrics(), log)
+	reaper := outbox.NewReaper(store, discardMetrics(), log)
 
 	const corrID = "corr-e2e-99"
 	id := uuid.Must(uuid.NewV7())

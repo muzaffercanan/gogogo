@@ -56,7 +56,11 @@ func run() error {
 
 	store := repository.New(db)
 
-	relay := outbox.NewRelay(store, queue.NewPublisher(mq), log)
+	reg := ops.NewRegistry()
+	metrics := outbox.NewMetrics(reg)
+	reg.MustRegister(outbox.NewBacklogCollector(store, log))
+
+	relay := outbox.NewRelay(store, queue.NewPublisher(mq), metrics, log)
 	relayDone := make(chan struct{})
 	go func() {
 		defer close(relayDone)
@@ -67,7 +71,7 @@ func run() error {
 		<-relayDone
 	}()
 
-	reaper := outbox.NewReaper(store, log)
+	reaper := outbox.NewReaper(store, metrics, log)
 	reaperDone := make(chan struct{})
 	go func() {
 		defer close(reaperDone)
@@ -78,7 +82,6 @@ func run() error {
 		<-reaperDone
 	}()
 
-	reg := ops.NewRegistry()
 	mux := ops.NewMux(log, reg, map[string]health.Check{
 		"postgres": db.Ping,
 		"rabbitmq": mq.Check,

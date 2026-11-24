@@ -87,3 +87,10 @@ SELECT t.id, t.payload::jsonb, now()
 FROM (
     SELECT unnest(@ids::uuid[]) AS id, unnest(@payloads::text[]) AS payload
 ) AS t;
+
+-- name: CountOutboxBacklog :one
+-- Counts outbox rows that are due (available_at has passed) and scheduled (available_at is still in
+-- the future), for the outbox_backlog metric.
+SELECT count(*) FILTER (WHERE available_at <= now()) AS due,
+       count(*) FILTER (WHERE available_at > now())  AS scheduled
+FROM outbox;

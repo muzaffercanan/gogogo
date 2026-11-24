@@ -404,6 +404,29 @@ func leaseActive(ctx context.Context, t *testing.T, db *pgxpool.Pool, id uuid.UU
 	return active
 }
 
+func TestCountOutboxBacklogSplitsDueAndScheduledRows(t *testing.T) {
+	ctx := context.Background()
+	db := pg.NewDatabase(t)
+	store := repository.New(db)
+
+	if got, err := store.CountOutboxBacklog(ctx); err != nil || got != (repository.OutboxBacklog{}) {
+		t.Fatalf("CountOutboxBacklog on an empty outbox = %+v, %v; want zero counts", got, err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	createWithAvailableAt(ctx, t, store, db, domain.StatusPending, now.Add(-time.Minute), nil)
+	createWithAvailableAt(ctx, t, store, db, domain.StatusRetryScheduled, now.Add(-time.Second), nil)
+	createWithAvailableAt(ctx, t, store, db, domain.StatusPending, now.Add(time.Hour), nil)
+
+	got, err := store.CountOutboxBacklog(ctx)
+	if err != nil {
+		t.Fatalf("CountOutboxBacklog: %v", err)
+	}
+	if want := (repository.OutboxBacklog{Due: 2, Scheduled: 1}); got != want {
+		t.Errorf("CountOutboxBacklog = %+v, want %+v", got, want)
+	}
+}
+
 func createWithAvailableAt(
 	ctx context.Context,
 	t *testing.T,

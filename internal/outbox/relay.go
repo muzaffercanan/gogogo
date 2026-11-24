@@ -40,9 +40,10 @@ type MessageBody struct {
 
 // Relay claims due outbox rows, marks their notifications queued and publishes them to RabbitMQ.
 type Relay struct {
-	store *repository.Store
-	pub   Publisher
-	log   *slog.Logger
+	store   *repository.Store
+	pub     Publisher
+	metrics *Metrics
+	log     *slog.Logger
 
 	batchSize              int
 	stepTimeout            time.Duration
@@ -50,11 +51,13 @@ type Relay struct {
 	minBackoff, maxBackoff time.Duration
 }
 
-// NewRelay returns a relay that reads due rows from store and publishes them through pub.
-func NewRelay(store *repository.Store, pub Publisher, log *slog.Logger) *Relay {
+// NewRelay returns a relay that reads due rows from store, publishes them through pub and records its
+// steps in metrics.
+func NewRelay(store *repository.Store, pub Publisher, metrics *Metrics, log *slog.Logger) *Relay {
 	return &Relay{
 		store:        store,
 		pub:          pub,
+		metrics:      metrics,
 		log:          log,
 		batchSize:    batchSize,
 		stepTimeout:  stepTimeout,
@@ -67,7 +70,10 @@ func NewRelay(store *repository.Store, pub Publisher, log *slog.Logger) *Relay {
 // Once runs one outbox batch step: it claims up to batchSize due rows, moves their notifications to
 // queued, publishes them with confirms and deletes the claimed rows, all within one transaction bounded
 // by the step timeout. Each published notification is logged after commit with its correlation ID.
+// Metrics are recorded after commit too; a failed step counts as a dispatch error unless ctx itself
+// ended (shutdown).
 func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
+	start := time.Now()
 	stepCtx, cancel := context.WithTimeout(ctx, r.stepTimeout)
 	defer cancel()
 
@@ -94,8 +100,12 @@ func (r *Relay) Once(ctx context.Context) (claimed, published int, err error) {
 		return nil
 	})
 	if err != nil {
+		if ctx.Err() == nil {
+			r.metrics.dispatchErrors.Inc()
+		}
 		return 0, 0, err
 	}
+	r.metrics.dispatched(dispatched, claimed, time.Since(start))
 	for _, it := range dispatched {
 		r.log.InfoContext(logging.WithCorrelationID(ctx, it.CorrelationID), "notification queued",
 			"notification_id", it.NotificationID, "channel", it.Channel, "priority", it.Priority)
