@@ -43,6 +43,7 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 | Unit tests | `make test` (`go test -count=1 ./...`) |
 | Integration tests (throwaway containers, needs Docker) | `make test-integration` (`go test -tags integration ./...`) |
 | Race tests (Linux container) | `make test-race` |
+| Load test (k6 burst of batch creates against the running stack) | `make load` (`docker compose run --rm k6`) |
 | Lint | `make lint` (`golangci-lint run ./...`, config in `.golangci.yml`) |
 | Build binaries | `make build` → `./bin` |
 | Regenerate code after changing `api/openapi.yaml`, SQL queries or migrations | `make generate` (oapi-codegen + sqlc; sqlc runs in Docker) |
@@ -84,6 +85,8 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `internal/testutil/redisclock`: reads a Redis server's clock while a test runs and reports how fast it
   ran against the host's (Docker Desktop's VM clock drifts and steps), for tests that compare Redis
   times with host times.
+- `test/load`: k6 scripts, run by the `k6` compose service (profile `load`). `burst.js` sends batches at
+  once, waits until they are sent and prints the drain rate per channel and when each priority was sent.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
 - `deploy/prometheus`, `deploy/grafana`: Prometheus scrape config, Grafana datasource and dashboard
   provisioning for the Compose stack. Update the dashboard JSON when a metric is renamed; Grafana loads

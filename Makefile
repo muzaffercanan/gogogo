@@ -28,6 +28,10 @@ down: ## Stop the stack (keeps the database volume)
 logs: ## Follow logs of the application services
 	$(COMPOSE) logs -f api relay worker
 
+.PHONY: load
+load: ## Run the k6 burst of batch creates against the running stack (test/load/burst.js)
+	$(COMPOSE) run --rm k6
+
 .PHONY: build
 build: ## Build all binaries into ./bin
 	go build -o bin/ ./cmd/...

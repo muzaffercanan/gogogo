@@ -141,5 +141,16 @@ services:
       redis: { condition: service_healthy }
       mock-provider: { condition: service_started }
 
+  # Load test, started only by `make load` (docker compose run --rm k6). Tune it with -e, for example
+  # BATCHES, BATCH_SIZE or DRAIN_TIMEOUT_SECONDS.
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: [load]
+    command: ["run", "--log-format=raw", "/scripts/burst.js"]
+    environment:
+      API_URL: http://api:8080
+    volumes: ["./test/load:/scripts:ro"]
+    depends_on: [api]
+
 volumes:
   pgdata:
