@@ -20,6 +20,8 @@ type OutboxItem struct {
 	Channel        domain.Channel
 	Priority       domain.Priority
 	CorrelationID  string
+	// TraceParent is the W3C traceparent the outbox row was written with, or "".
+	TraceParent string
 }
 
 // DispatchOutbox claims up to limit due outbox rows with FOR UPDATE SKIP LOCKED, moves their
@@ -93,6 +95,7 @@ func (s *Store) DispatchOutbox(ctx context.Context, limit int, publish func(cont
 				Channel:        p.Channel,
 				Priority:       p.Priority,
 				CorrelationID:  p.CorrelationID,
+				TraceParent:    p.TraceParent,
 			})
 		}
 

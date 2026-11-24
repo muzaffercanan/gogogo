@@ -58,6 +58,8 @@ type NewNotification struct {
 	Content       string
 	MaxAttempts   int
 	CorrelationID string
+	// TraceParent is the W3C traceparent of the span the notification's delivery continues, or "".
+	TraceParent string
 	// ScheduledAt delays delivery until the given time; nil means as soon as possible.
 	ScheduledAt *time.Time
 }

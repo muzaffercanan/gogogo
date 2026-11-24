@@ -12,9 +12,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/muzaffercanan/gogogo/internal/domain"
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
+	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 	"github.com/muzaffercanan/gogogo/internal/repository"
 )
 
@@ -23,22 +26,24 @@ type Service struct {
 	store       *repository.Store
 	maxAttempts int
 	now         func() time.Time
+	tracer      trace.Tracer
 }
 
 // New returns a Service that stores notifications in store, gives each one maxAttempts delivery
-// attempts and reads the current time from now.
-func New(store *repository.Store, maxAttempts int, now func() time.Time) (*Service, error) {
+// attempts, reads the current time from now and starts the traces of batch notifications with tp.
+func New(store *repository.Store, maxAttempts int, now func() time.Time, tp trace.TracerProvider) (*Service, error) {
 	if maxAttempts < 1 {
 		return nil, fmt.Errorf("max attempts must be at least 1, got %d", maxAttempts)
 	}
-	return &Service{store: store, maxAttempts: maxAttempts, now: now}, nil
+	return &Service{store: store, maxAttempts: maxAttempts, now: now, tracer: tp.Tracer("github.com/muzaffercanan/gogogo/internal/service")}, nil
 }
 
 // maxIdempotencyKeyLen is the longest Idempotency-Key the API accepts, in characters.
 const maxIdempotencyKeyLen = 255
 
 // Create validates req and stores it as a pending notification, ready for dispatch. The notification
-// carries the correlation ID of ctx. It returns a *domain.ValidationError if req is invalid.
+// carries the correlation ID of ctx, and its delivery continues the trace of ctx's span, which gets the
+// notification's ID. It returns a *domain.ValidationError if req is invalid.
 //
 // key is the request's Idempotency-Key, or nil if it sent none. If a notification was already created
 // with key, Create stores nothing: it returns that notification in its current state with replayed set
@@ -69,6 +74,7 @@ func (s *Service) Create(ctx context.Context, req domain.NotificationRequest, ke
 	if err != nil {
 		return domain.Notification{}, false, err
 	}
+	trace.SpanFromContext(ctx).SetAttributes(notificationAttributes(nn)...)
 	if key != nil {
 		nn.IdempotencyKey, nn.RequestHash = *key, hash
 	}
@@ -105,7 +111,8 @@ func validateIdempotencyKey(key string) error {
 	return &domain.ValidationError{Fields: []domain.FieldError{{Field: "Idempotency-Key", Code: code, Message: msg}}}
 }
 
-// newNotification turns a valid request into a notification to store, with a new time-ordered ID.
+// newNotification turns a valid request into a notification to store, with a new time-ordered ID,
+// whose delivery continues the trace of ctx's span.
 func (s *Service) newNotification(ctx context.Context, req domain.NotificationRequest) (domain.NewNotification, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -123,8 +130,17 @@ func (s *Service) newNotification(ctx context.Context, req domain.NotificationRe
 		Content:       req.Content,
 		MaxAttempts:   s.maxAttempts,
 		CorrelationID: logging.CorrelationID(ctx),
+		TraceParent:   tracing.TraceParent(ctx),
 		ScheduledAt:   req.ScheduledAt,
 	}, nil
+}
+
+func notificationAttributes(n domain.NewNotification) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		tracing.NotificationIDKey.String(n.ID.String()),
+		tracing.NotificationChannelKey.String(string(n.Channel)),
+		tracing.NotificationPriorityKey.String(string(n.Priority)),
+	}
 }
 
 // CreateBatch validates each of items on its own and stores the valid ones as pending notifications of
@@ -134,6 +150,9 @@ func (s *Service) newNotification(ctx context.Context, req domain.NotificationRe
 //
 // key works as for Create and covers the whole batch: a replay returns the stored batch, whose item
 // results are those of the first request.
+//
+// Each notification of the batch starts a trace of its own, linked to the span of ctx, so that its
+// trace shows its delivery alone, as for a notification created on its own.
 func (s *Service) CreateBatch(ctx context.Context, items []domain.NotificationRequest, key *string) (b domain.Batch, replayed bool, err error) {
 	switch {
 	case len(items) == 0:
@@ -166,6 +185,13 @@ func (s *Service) CreateBatch(ctx context.Context, items []domain.NotificationRe
 	if key != nil {
 		nb.IdempotencyKey, nb.RequestHash = *key, hash
 	}
+	trace.SpanFromContext(ctx).SetAttributes(tracing.BatchIDKey.String(id.String()))
+	var spans []trace.Span
+	defer func() {
+		for _, span := range spans {
+			span.End()
+		}
+	}()
 	now := s.now()
 	for i, item := range items {
 		nb.Items[i].Index = i
@@ -177,10 +203,13 @@ func (s *Service) CreateBatch(ctx context.Context, items []domain.NotificationRe
 			nb.Items[i].Errors = invalid.Fields
 			continue
 		}
-		n, err := s.newNotification(ctx, item)
+		itemCtx, span := s.tracer.Start(ctx, "create notification", trace.WithNewRoot(), trace.WithLinks(trace.LinkFromContext(ctx)))
+		spans = append(spans, span)
+		n, err := s.newNotification(itemCtx, item)
 		if err != nil {
 			return domain.Batch{}, false, err
 		}
+		span.SetAttributes(append(notificationAttributes(n), tracing.BatchIDKey.String(id.String()))...)
 		n.BatchID = &id
 		nb.Items[i].NotificationID = &n.ID
 		nb.Notifications = append(nb.Notifications, n)

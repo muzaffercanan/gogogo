@@ -27,11 +27,12 @@ func New(pool *pgxpool.Pool) *Store {
 }
 
 // outboxPayload is stored with every outbox row, so the relay can route a notification to its queue
-// without reading the notification itself.
+// without reading the notification itself, and continue its trace.
 type outboxPayload struct {
 	Channel       domain.Channel  `json:"channel"`
 	Priority      domain.Priority `json:"priority"`
 	CorrelationID string          `json:"correlation_id,omitempty"`
+	TraceParent   string          `json:"traceparent,omitempty"`
 }
 
 // CreateNotification stores n in status pending together with its outbox row and its first status
@@ -49,6 +50,7 @@ func (s *Store) CreateNotification(ctx context.Context, n domain.NewNotification
 		Channel:       n.Channel,
 		Priority:      n.Priority,
 		CorrelationID: n.CorrelationID,
+		TraceParent:   n.TraceParent,
 	})
 	if err != nil {
 		return domain.Notification{}, false, fmt.Errorf("encoding outbox payload: %w", err)

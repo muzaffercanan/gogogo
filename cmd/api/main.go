@@ -58,14 +58,14 @@ func run() error {
 	}
 	defer db.Close()
 
-	svc, err := service.New(repository.New(db), cfg.MaxAttempts, time.Now)
+	svc, err := service.New(repository.New(db), cfg.MaxAttempts, time.Now, tp)
 	if err != nil {
 		return err
 	}
 
 	reg := ops.NewRegistry()
 	mux := ops.NewMux(log, reg, map[string]health.Check{"postgres": db.Ping})
-	mux.Handle("/", api.NewHandler(svc, log, reg))
+	mux.Handle("/", api.NewHandler(svc, log, reg, tp))
 
 	return httpserver.Run(ctx, log, cfg.HTTPAddr, mux, cfg.ShutdownTimeout)
 }

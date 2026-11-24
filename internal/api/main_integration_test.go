@@ -16,6 +16,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/muzaffercanan/gogogo/internal/api"
 	"github.com/muzaffercanan/gogogo/internal/platform/logging"
@@ -34,9 +38,26 @@ type testAPI struct {
 	db  *pgxpool.Pool
 	// now, when set, replaces the wall clock of the service.
 	now atomic.Pointer[time.Time]
+	// spans records the spans the API ended; nil for an API without tracing.
+	spans *tracetest.SpanRecorder
 }
 
+// newAPI returns an API that records its spans in spans.
 func newAPI(t *testing.T) *testAPI {
+	t.Helper()
+	spans := tracetest.NewSpanRecorder()
+	a := serveAPI(t, sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)))
+	a.spans = spans
+	return a
+}
+
+// newUntracedAPI returns an API whose tracing is off, as without an OTLP endpoint.
+func newUntracedAPI(t *testing.T) *testAPI {
+	t.Helper()
+	return serveAPI(t, noop.NewTracerProvider())
+}
+
+func serveAPI(t *testing.T, tp trace.TracerProvider) *testAPI {
 	t.Helper()
 	a := &testAPI{db: pg.NewDatabase(t)}
 	svc, err := service.New(repository.New(a.db), 5, func() time.Time {
@@ -44,11 +65,11 @@ func newAPI(t *testing.T) *testAPI {
 			return *now
 		}
 		return time.Now()
-	})
+	}, tp)
 	if err != nil {
 		t.Fatalf("service.New: %v", err)
 	}
-	srv := httptest.NewServer(api.NewHandler(svc, logging.New(io.Discard, "error"), prometheus.NewRegistry()))
+	srv := httptest.NewServer(api.NewHandler(svc, logging.New(io.Discard, "error"), prometheus.NewRegistry(), tp))
 	t.Cleanup(srv.Close)
 	a.url = srv.URL
 	return a

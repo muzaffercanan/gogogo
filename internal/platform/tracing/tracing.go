@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -80,6 +81,17 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Attributes this system adds to its spans, so a notification's trace can be found by its ID.
+const (
+	NotificationIDKey       = attribute.Key("notification.id")
+	NotificationChannelKey  = attribute.Key("notification.channel")
+	NotificationPriorityKey = attribute.Key("notification.priority")
+	BatchIDKey              = attribute.Key("notification.batch_id")
+)
+
+// Propagator returns the propagator for trace context in HTTP headers: W3C traceparent and tracestate.
+func Propagator() propagation.TextMapPropagator { return propagation.TraceContext{} }
 
 // traceParentKey is the W3C trace context field that identifies a span and its trace.
 const traceParentKey = "traceparent"

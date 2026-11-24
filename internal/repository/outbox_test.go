@@ -29,6 +29,7 @@ func TestDispatchOutboxQueuesDueNotificationsBeforePublishAndDeletesRows(t *test
 		n.Channel = domain.ChannelEmail
 		n.Priority = domain.PriorityNormal
 		n.CorrelationID = "corr-first"
+		n.TraceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 	})
 	second := createWithAvailableAt(ctx, t, store, db, domain.StatusRetryScheduled, newer, func(n *domain.NewNotification) {
 		n.Channel = domain.ChannelPush
@@ -57,7 +58,8 @@ func TestDispatchOutboxQueuesDueNotificationsBeforePublishAndDeletesRows(t *test
 	}
 
 	want := []repository.OutboxItem{
-		{NotificationID: first, Channel: domain.ChannelEmail, Priority: domain.PriorityNormal, CorrelationID: "corr-first"},
+		{NotificationID: first, Channel: domain.ChannelEmail, Priority: domain.PriorityNormal, CorrelationID: "corr-first",
+			TraceParent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"},
 		{NotificationID: second, Channel: domain.ChannelPush, Priority: domain.PriorityLow, CorrelationID: "corr-second"},
 	}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {

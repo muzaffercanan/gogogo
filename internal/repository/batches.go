@@ -141,7 +141,7 @@ func notificationArrays(batchID uuid.UUID, ns []domain.NewNotification) (batchRo
 		if err != nil {
 			return batchRows{}, fmt.Errorf("max attempts: %w", err)
 		}
-		payload, err := json.Marshal(outboxPayload{Channel: n.Channel, Priority: n.Priority, CorrelationID: n.CorrelationID})
+		payload, err := json.Marshal(outboxPayload{Channel: n.Channel, Priority: n.Priority, CorrelationID: n.CorrelationID, TraceParent: n.TraceParent})
 		if err != nil {
 			return batchRows{}, fmt.Errorf("encoding outbox payload: %w", err)
 		}

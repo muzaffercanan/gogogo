@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/muzaffercanan/gogogo/internal/api/oapi"
 	"github.com/muzaffercanan/gogogo/internal/domain"
+	"github.com/muzaffercanan/gogogo/internal/platform/tracing"
 	"github.com/muzaffercanan/gogogo/internal/service"
 )
 
@@ -32,8 +35,10 @@ type Server struct {
 var _ oapi.StrictServerInterface = (*Server)(nil)
 
 // NewHandler returns the HTTP handler of the API: the routes generated from the spec behind the
-// middleware chain. Errors are answered as problem+json; metrics are registered with reg.
-func NewHandler(svc *service.Service, logger *slog.Logger, reg prometheus.Registerer) http.Handler {
+// middleware chain. Errors are answered as problem+json; metrics are registered with reg. Every request
+// gets a server span from tp, named after its route, that continues the trace of an incoming
+// traceparent header.
+func NewHandler(svc *service.Service, logger *slog.Logger, reg prometheus.Registerer, tp trace.TracerProvider) http.Handler {
 	strict := oapi.NewStrictHandlerWithOptions(&Server{svc: svc}, nil, oapi.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  RequestErrorHandler,
 		ResponseErrorHandlerFunc: ResponseErrorHandler(logger),
@@ -46,12 +51,15 @@ func NewHandler(svc *service.Service, logger *slog.Logger, reg prometheus.Regist
 		WriteProblem(w, r, ProblemFor(domain.ErrNotFound))
 	})
 
-	// CorrelationID replaces the request, so it goes outside the middleware that reads r.Pattern.
+	// CorrelationID replaces the request, so it goes outside the middleware that reads r.Pattern; so does
+	// otelhttp, which names its span after the route once the router has set r.Pattern on the request
+	// it passed on.
 	var h http.Handler = mux
 	h = Recover(logger)(h)
 	h = NewMetrics(reg).Middleware(h)
 	h = AccessLog(logger)(h)
 	h = MaxBytes(bodyLimit)(h)
+	h = otelhttp.NewHandler(h, "api", otelhttp.WithTracerProvider(tp), otelhttp.WithPropagators(tracing.Propagator()))
 	return CorrelationID(h)
 }
 
