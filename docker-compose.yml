@@ -54,6 +54,32 @@ services:
     command: ["--set=extensions.jaeger_storage.backends.some_storage.memory.max_traces=20000"]
     ports: ["16686:16686", "4318:4318"]
 
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    volumes: ["./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    # The image declares /prometheus a volume; tmpfs keeps the metrics with the container instead. It is
+    # owned by nobody, the user Prometheus runs as.
+    tmpfs: ["/prometheus:uid=65534,gid=65534"]
+    # 9090 on the host is the mock provider's.
+    ports: ["9091:9090"]
+
+  grafana:
+    image: grafana/grafana:13.3.2
+    environment:
+      # Anonymous admin without a login form: for a local stack only, so the port is bound to localhost.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/notifications.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus]
+
   migrate:
     image: migrate/migrate:v4.20.1
     command: ["-path=/migrations", "-database=postgres://notify:notify@postgres:5432/notify?sslmode=disable", "up"]

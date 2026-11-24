@@ -38,7 +38,7 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 
 | Task | Command |
 |---|---|
-| Start everything (Postgres, RabbitMQ, Redis, Jaeger, migrations, api, relay, worker, mock provider) | `docker compose up --build -d` or `make up` |
+| Start everything (Postgres, RabbitMQ, Redis, Jaeger, Prometheus, Grafana, migrations, api, relay, worker, mock provider) | `docker compose up --build -d` or `make up` |
 | Stop / wipe data | `make down` / `docker compose down -v` |
 | Unit tests | `make test` (`go test -count=1 ./...`) |
 | Integration tests (throwaway containers, needs Docker) | `make test-integration` (`go test -tags integration ./...`) |
@@ -48,7 +48,8 @@ Status: early scaffolding. Architecture decisions are recorded in `docs/adr/` as
 | Regenerate code after changing `api/openapi.yaml`, SQL queries or migrations | `make generate` (oapi-codegen + sqlc; sqlc runs in Docker) |
 
 Ports: api 8080, relay ops 8081, worker ops 8082, mock provider 9090, RabbitMQ UI 15672 (guest/guest),
-Jaeger UI 16686 (OTLP/HTTP on 4318).
+Jaeger UI 16686 (OTLP/HTTP on 4318), Prometheus 9091, Grafana 3000 (localhost only, no login; the
+`Notifications` dashboard is its home page).
 Every process serves `/health/live`, `/health/ready` and `/metrics`.
 
 ## Layout
@@ -79,6 +80,9 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
 - `internal/testutil/rabbittest`: RabbitMQ container for integration tests; one virtual host per test.
 - `internal/testutil/redistest`: Redis container for integration tests; one logical database per test.
 - `migrations/`: versioned SQL (`golang-migrate`), applied by the `migrate` compose service.
+- `deploy/prometheus`, `deploy/grafana`: Prometheus scrape config, Grafana datasource and dashboard
+  provisioning for the Compose stack. Update the dashboard JSON when a metric is renamed; Grafana loads
+  it only at startup (`docker compose restart grafana`).
 - `docs/adr/`: architecture decision records.
 
 ## Code conventions

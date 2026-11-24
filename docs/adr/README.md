@@ -20,3 +20,4 @@ Short records of the significant design decisions: context, decision, alternativ
 | [0014](0014-provider-response-classification.md) | Provider response classification and Retry-After | Accepted |
 | [0015](0015-ack-after-the-sending-transition.md) | Acknowledge a message once its notification is sending | Accepted |
 | [0016](0016-tracing-with-opentelemetry.md) | Tracing with OpenTelemetry, exported to Jaeger | Accepted |
+| [0017](0017-metrics-dashboards-in-compose.md) | Prometheus and Grafana dashboards in Docker Compose | Accepted |

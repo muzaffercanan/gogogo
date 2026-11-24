@@ -1,0 +1,15 @@
+# Scrapes every process of the Compose stack (ADR 0017). Each serves /metrics on its HTTP port, 8080
+# inside the Compose network.
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+
+scrape_configs:
+  - job_name: api
+    static_configs: [{ targets: ["api:8080"] }]
+  - job_name: relay
+    static_configs: [{ targets: ["relay:8080"] }]
+  - job_name: worker
+    static_configs: [{ targets: ["worker:8080"] }]
+  - job_name: mock-provider
+    static_configs: [{ targets: ["mock-provider:8080"] }]
