@@ -92,5 +92,8 @@ Every process serves `/health/live`, `/health/ready` and `/metrics`.
   test files start with `//go:build integration`; database tests use `pgtest.Server.NewDatabase(t)`, broker
   tests `rabbittest.Server.NewVHost(t)`, Redis tests `redistest.Server.NewClient(t)` or `NewURL(t)`. Logic
   that needs a controllable Redis clock (the rate limiter's script) is also tested on miniredis.
+- Code that makes spans takes a `trace.TracerProvider` (no global provider). Tests that do not look at
+  spans pass `noop.NewTracerProvider()`; tests that do record them with `tracetest.NewSpanRecorder()`
+  in an `sdktrace.NewTracerProvider`.
 - Never edit `*.gen.go` by hand: change the source (spec, SQL) and run `make generate`. Generated code is
   committed; CI fails if it is stale.

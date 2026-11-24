@@ -31,6 +31,37 @@ failed delivery spent it in.
   16686, OTLP/HTTP on 4318. Its storage keeps the latest 20 000 traces, about 240 MB (a trace of
   seven spans took about 12 KB).
 
+## Propagation
+
+Each notification gets one trace, from the request that created it to the provider's answer, across
+every attempt.
+
+- **Spans at the boundaries.** The API server and the provider client get their spans from `otelhttp`
+  (server spans named by route). The relay starts a producer span, `publish <queue>`, for each
+  notification it publishes, and the worker a consumer span, `process <queue>`. SQL and Redis calls do
+  not get spans of their own.
+- **Carried as a `traceparent` string.** The API stores the W3C `traceparent` of its span in the
+  notification's outbox payload. The relay's publish span continues it and goes into the AMQP message
+  as a `traceparent` header. Only `traceparent` crosses the outbox and the broker; `tracestate` does not.
+- **The relay span lasts until the commit.** Every publish span of a relay step ends when the step's
+  transaction commits, and is marked as an error if it rolls back. All spans of one step therefore
+  show the same duration.
+- **The worker span starts when the dispatcher picks the delivery.** Waiting for the circuit breaker,
+  a sender and a rate-limit token are events on that span (the token's wait is an attribute), and the
+  outcome is an attribute; outcomes other than sent or skipped mark the span as an error.
+- **Retries stay in the trace.** A retryable failure writes the failed attempt's `traceparent` into the
+  new outbox row, so the next attempt's spans sit under it; a dead-lettered message carries it in its
+  headers. Deliveries the reaper recovers start a new trace.
+- **Batches.** Each item of `POST /v1/notifications/batch` gets its own root span,
+  `create notification`, linked to the batch request's span, so a trace never holds more than one
+  notification.
+- **The provider sees the trace.** The provider client sends `traceparent`, and the mock provider
+  records a server span under it.
+- **An incoming `traceparent` is trusted.** A caller's trace context becomes the parent of the API's
+  span, so callers inside the same system see one trace end to end.
+- **Logs name the span.** A record logged with a context that carries a span gets `trace_id` and
+  `span_id` next to `correlation_id`.
+
 ## Alternatives considered
 
 - **OTLP/gRPC.** The Go OTLP/HTTP exporter links gRPC as well (the binaries differ by 85 KB), so gRPC
@@ -42,6 +73,25 @@ failed delivery spent it in.
   usually be missing.
 - **Jaeger behind a Compose profile.** A leaner default stack, but with the profile off the processes
   would log export failures unless the endpoint were cleared as well.
+- **Spans for every SQL and Redis call** (`otelpgx`, `redisotel`): slow queries and rate-limit calls
+  would show directly, but a notification would have three times the spans, filling Jaeger's storage
+  three times as fast; their time is already visible inside the spans around them.
+- **One span per relay step, linked to each notification's trace** (the OpenTelemetry messaging
+  convention for batches): the step's duration and size in one place, but a notification's path would
+  continue only through a link. The relay's metrics already show its steps.
+- **Keeping the original `traceparent` on the notification row**, so that reaper recoveries stay in the
+  trace too: it needs a migration for a path taken only when a worker dies mid-delivery.
+- **A new trace per attempt, linked to the previous one:** shorter traces, but a notification's history
+  spread over several.
+- **Not sending `traceparent` to the provider:** no trace IDs leave the system (they are random and say
+  nothing about the recipient), but the provider could not join its side to ours.
+- **Starting the worker span when the delivery starts:** shorter spans, but the breaker, sender and
+  rate-limit waits, the likeliest causes of delay, would not show.
+- **Putting a whole batch in the request's trace:** the simplest, but a batch of 1 000 makes one trace
+  of about 4 000 spans, which Jaeger's UI and search handle badly, and gives batch and single creates
+  different shapes.
+- **Treating the API as a public endpoint** (a new root linked to the caller's context): only we would
+  choose trace IDs, but the API serves services of the same system, which should see one trace.
 
 ## Consequences
 
@@ -51,3 +101,8 @@ failed delivery spent it in.
   the default sampler is used.
 - If Jaeger is unreachable for long, each process's span queue (2 048 spans) fills and later spans are
   dropped; requests and deliveries are unaffected.
+- A notification's trace shows its whole path, including every retry, except after a reaper recovery,
+  which starts a new trace. A batch item's trace reaches the batch request only through a link.
+- Under full load the worker spans are mostly waiting; the events on them say for what.
+- Trace IDs reach the provider, and a caller can choose the trace ID of the notifications it creates.
+- Each log record with a span is about 80 characters longer.
