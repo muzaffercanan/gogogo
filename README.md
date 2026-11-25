@@ -95,25 +95,11 @@ Workers deliver to the bundled mock provider, which answers after 50 ± 50 ms an
 
 ## 🧱 Architecture
 
-```mermaid
-flowchart LR
-  C([Client]) -->|HTTP| API[api]
-  API -->|one transaction:<br>notification + outbox row| PG[(PostgreSQL)]
-  REL[relay + reaper] -->|claim due outbox rows| PG
-  REL -->|publish, wait for confirms| MQ[(RabbitMQ<br>channel.priority queues)]
-  MQ --> W[worker<br>per channel]
-  W -->|rate-limit slot| RD[(Redis)]
-  W -->|POST, Idempotency-Key| P([Provider])
-  W -->|status, retry as outbox row| PG
-  W -->|failed for good| DLQ[(channel.dlq)]
-
-  classDef proc fill:#00ADD8,stroke:#007d9c,color:#fff
-  classDef store fill:#f6f8fa,stroke:#8c959f,color:#24292f
-  classDef ext fill:#fff8c5,stroke:#d4a72c,color:#24292f
-  class API,REL,W proc
-  class PG,MQ,RD,DLQ store
-  class C,P ext
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/architecture-light.svg">
+  <img alt="gogogo system architecture" src="docs/diagrams/architecture-light.svg" width="100%">
+</picture>
 
 | Process | Role |
 |---|---|
@@ -125,23 +111,11 @@ All three processes are built into one image and scale independently.
 
 ### Notification lifecycle
 
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> pending: api
-  pending --> queued: relay
-  retry_scheduled --> queued: relay
-  queued --> sending: worker
-  sending --> sent: worker
-  sending --> retry_scheduled: worker / reaper
-  sending --> permanently_failed: worker / reaper
-  pending --> cancelled: api
-  queued --> cancelled: api
-  retry_scheduled --> cancelled: api
-  sent --> [*]
-  permanently_failed --> [*]
-  cancelled --> [*]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/lifecycle-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/lifecycle-light.svg">
+  <img alt="Notification lifecycle state machine" src="docs/diagrams/lifecycle-light.svg" width="100%">
+</picture>
 
 `pending`, `queued` and `retry_scheduled` can be cancelled; `sent`, `permanently_failed` and
 `cancelled` are terminal. Every transition is a conditional update recorded in `notification_events`,
@@ -437,6 +411,7 @@ burst; `BATCH_SIZE` and `DRAIN_TIMEOUT_SECONDS` work the same way.
 | `deploy/` | Prometheus scrape config, Grafana datasource and dashboard |
 | `test/load/` | k6 scripts |
 | `docs/adr/` | architecture decision records |
+| `docs/diagrams/` | architecture and lifecycle diagrams (Excalidraw sources and light/dark SVGs) |
 
 </details>
 

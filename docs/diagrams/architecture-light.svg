@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1420 856" width="1420" height="856" role="img" aria-label="gogogo — System Architecture">
+  <title>gogogo — System Architecture</title>
+  <defs>
+    <filter id="card-shadow" x="-6%" y="-6%" width="114%" height="118%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#0f172a" flood-opacity="0.06"/>
+    </filter>
+    <pattern id="dot-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="0.9" fill="#cbd5e1" opacity="0.55"/>
+    </pattern>
+    <marker id="arr-0284c7" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1.2 1.6 L 8.8 5 L 1.2 8.4 z" fill="#0284c7"/></marker>
+    <marker id="arr-4f46e5" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1.2 1.6 L 8.8 5 L 1.2 8.4 z" fill="#4f46e5"/></marker>
+    <marker id="arr-7c3aed" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1.2 1.6 L 8.8 5 L 1.2 8.4 z" fill="#7c3aed"/></marker>
+    <marker id="arr-d97706" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1.2 1.6 L 8.8 5 L 1.2 8.4 z" fill="#d97706"/></marker>
+    <marker id="arr-dc2626" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1.2 1.6 L 8.8 5 L 1.2 8.4 z" fill="#dc2626"/></marker>
+    <marker id="arr-e11d48" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1.2 1.6 L 8.8 5 L 1.2 8.4 z" fill="#e11d48"/></marker>
+    <marker id="arr-ea580c" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1.2 1.6 L 8.8 5 L 1.2 8.4 z" fill="#ea580c"/></marker>
+  </defs>
+  <rect x="0.75" y="0.75" width="1418.50" height="854.50" rx="16" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="1.5" y="1.5" width="1417.0" height="853.0" rx="15" fill="url(#dot-grid)"/>
+  <text x="34.0" y="40.0" fill="#0f172a" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="21.0" font-weight="700" text-anchor="start">gogogo — System Architecture</text>
+  <text x="34.0" y="61.0" fill="#475569" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" text-anchor="start">Transactional Outbox · Quorum Priority Queues · Distributed GCRA Rate Limiting · Guarded State Machine</text>
+  <rect x="1308.0" y="26.0" width="78.0" height="24.0" rx="12.0" fill="#fffbeb" stroke="#d97706" stroke-width="1.20"/>
+  <circle cx="1319.0" cy="38" r="3.5" fill="#d97706"/>
+  <text x="1328.0" y="42.0" fill="#78350f" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.0" font-weight="600" text-anchor="start">External</text>
+  <rect x="1209.0" y="26.0" width="91.0" height="24.0" rx="12.0" fill="#fff1f2" stroke="#e11d48" stroke-width="1.20"/>
+  <circle cx="1220.0" cy="38" r="3.5" fill="#e11d48"/>
+  <text x="1229.0" y="42.0" fill="#881337" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.0" font-weight="600" text-anchor="start">Rate Limit</text>
+  <rect x="1136.0" y="26.0" width="65.0" height="24.0" rx="12.0" fill="#fff4eb" stroke="#ea580c" stroke-width="1.20"/>
+  <circle cx="1147.0" cy="38" r="3.5" fill="#ea580c"/>
+  <text x="1156.0" y="42.0" fill="#7c2d12" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.0" font-weight="600" text-anchor="start">Broker</text>
+  <rect x="1037.0" y="26.0" width="91.0" height="24.0" rx="12.0" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.20"/>
+  <circle cx="1048.0" cy="38" r="3.5" fill="#4f46e5"/>
+  <text x="1057.0" y="42.0" fill="#312e81" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.0" font-weight="600" text-anchor="start">Data Store</text>
+  <rect x="938.0" y="26.0" width="91.0" height="24.0" rx="12.0" fill="#edf7ff" stroke="#0284c7" stroke-width="1.20"/>
+  <circle cx="949.0" cy="38" r="3.5" fill="#0284c7"/>
+  <text x="958.0" y="42.0" fill="#0c4a6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.0" font-weight="600" text-anchor="start">Go Process</text>
+  <line x1="34" y1="74" x2="1386" y2="74" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="34.0" y="110.0" width="136.0" height="116.0" rx="14.0" fill="#fffbeb" stroke="#d97706" stroke-width="1.80" filter="url(#card-shadow)"/>
+  <g transform="translate(48.0,126.0)" fill="none" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/><path d="M8 1.5a10 10 0 0 1 0 13a10 10 0 0 1 0-13z"/></g>
+  <text x="70.0" y="139.0" fill="#78350f" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15.5" font-weight="700" text-anchor="start">Client</text>
+  <text x="48.0" y="161.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.0" font-weight="600" text-anchor="start">REST / JSON</text>
+  <text x="48.0" y="181.0" fill="#92400e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.1" font-weight="500" text-anchor="start">create · batch</text>
+  <text x="48.0" y="199.0" fill="#92400e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.1" font-weight="500" text-anchor="start">status · cancel</text>
+  <path d="M 170.0 168.0 L 234.0 168.0" fill="none" stroke="#d97706" stroke-width="2.00" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-d97706)"/>
+  <rect x="180.2" y="156.5" width="37.6" height="23.1" rx="7.0" fill="#ffffff" stroke="#d97706" stroke-width="1.10"/>
+  <text x="199.0" y="171.7" fill="#78350f" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">HTTP</text>
+  <rect x="236.0" y="92.0" width="256.0" height="152.0" rx="14.0" fill="#edf7ff" stroke="#0284c7" stroke-width="1.80" filter="url(#card-shadow)"/>
+  <g transform="translate(252.0,108.0)" fill="none" stroke="#0284c7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2" width="13" height="5" rx="1.5"/><rect x="1.5" y="9" width="13" height="5" rx="1.5"/><circle cx="4.5" cy="4.5" r="0.7" fill="#0284c7"/><circle cx="4.5" cy="11.5" r="0.7" fill="#0284c7"/></g>
+  <text x="274.0" y="121.0" fill="#0c4a6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.0" font-weight="700" text-anchor="start">api</text>
+  <rect x="397.9" y="106.0" width="80.0" height="20.0" rx="10.0" fill="#dbeafe"/>
+  <text x="438.0" y="119.7" fill="#0369a1" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">Go · :8080</text>
+  <line x1="252" y1="136" x2="476" y2="136" stroke="#bae6fd" stroke-width="1"/>
+  <text x="252.0" y="158.0" fill="#1e4e6e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.6" font-weight="500" text-anchor="start">POST /v1/notifications</text>
+  <text x="252.0" y="178.0" fill="#1e4e6e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.6" font-weight="500" text-anchor="start">POST /v1/notifications/batch (≤1000)</text>
+  <text x="252.0" y="198.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.4" font-weight="500" text-anchor="start">Idempotency-Key · schedule · cancel</text>
+  <text x="252.0" y="218.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.4" font-weight="500" text-anchor="start">202 Accepted · RFC 9457 problem+json</text>
+  <path d="M 492.0 168.0 L 630.0 168.0" fill="none" stroke="#4f46e5" stroke-width="2.10" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-4f46e5)"/>
+  <rect x="503.4" y="149.6" width="109.2" height="36.9" rx="7.0" fill="#ffffff" stroke="#4f46e5" stroke-width="1.10"/>
+  <text x="558.0" y="164.7" fill="#312e81" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">1 atomic tx</text>
+  <text x="558.0" y="178.6" fill="#312e81" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">+ NOTIFY outbox</text>
+  <rect x="632.0" y="88.0" width="432.0" height="160.0" rx="14.0" fill="#eef2ff" stroke="#4f46e5" stroke-width="2.00" filter="url(#card-shadow)"/>
+  <g transform="translate(648.0,104.0)" fill="none" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="3.5" rx="6.5" ry="2.5"/><path d="M1.5 3.5v9c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5v-9"/><path d="M1.5 8c0 1.4 2.9 2.5 6.5 2.5s6.5-1.1 6.5-2.5"/></g>
+  <text x="670.0" y="117.0" fill="#312e81" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.0" font-weight="700" text-anchor="start">PostgreSQL 17</text>
+  <rect x="945.4" y="102.0" width="102.6" height="20.0" rx="10.0" fill="#e0e7ff"/>
+  <text x="996.7" y="115.7" fill="#4338ca" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" text-anchor="middle">Source of Truth</text>
+  <rect x="648.0" y="132.0" width="195.0" height="48.0" rx="8.0" fill="#ffffff" stroke="#c7d2fe" stroke-width="1.20"/>
+  <text x="658.0" y="152.0" fill="#312e81" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12.0" font-weight="700" text-anchor="start">notifications</text>
+  <text x="658.0" y="169.0" fill="#3730a3" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">status · attempts · 60s lease</text>
+  <rect x="853.0" y="132.0" width="195.0" height="48.0" rx="8.0" fill="#ffffff" stroke="#c7d2fe" stroke-width="1.20"/>
+  <text x="863.0" y="152.0" fill="#312e81" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12.0" font-weight="700" text-anchor="start">outbox</text>
+  <text x="863.0" y="169.0" fill="#3730a3" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">available_at · payload (jsonb)</text>
+  <rect x="648.0" y="188.0" width="195.0" height="48.0" rx="8.0" fill="#ffffff" stroke="#c7d2fe" stroke-width="1.20"/>
+  <text x="658.0" y="208.0" fill="#312e81" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12.0" font-weight="700" text-anchor="start">notification_events</text>
+  <text x="658.0" y="225.0" fill="#3730a3" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">append-only audit trail</text>
+  <rect x="853.0" y="188.0" width="195.0" height="48.0" rx="8.0" fill="#ffffff" stroke="#c7d2fe" stroke-width="1.20"/>
+  <text x="863.0" y="208.0" fill="#312e81" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12.0" font-weight="700" text-anchor="start">batches</text>
+  <text x="863.0" y="225.0" fill="#3730a3" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">idempotency · item counts</text>
+  <rect x="1158.0" y="92.0" width="228.0" height="152.0" rx="14.0" fill="#fff1f2" stroke="#e11d48" stroke-width="1.80" filter="url(#card-shadow)"/>
+  <g transform="translate(1174.0,108.0)" fill="none" stroke="#e11d48" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="9 1.5 2.5 9.5 8 9.5 7 15.5 13.5 7.5 8 7.5 9 1.5"/></g>
+  <text x="1194.0" y="121.0" fill="#881337" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.0" font-weight="700" text-anchor="start">Redis 7</text>
+  <rect x="1304.8" y="106.0" width="67.2" height="20.0" rx="10.0" fill="#ffe4e6"/>
+  <text x="1338.4" y="119.7" fill="#be123c" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">GCRA Lua</text>
+  <line x1="1174" y1="136" x2="1370" y2="136" stroke="#fecdd3" stroke-width="1"/>
+  <text x="1174.0" y="158.0" fill="#9f1239" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.8" font-weight="600" text-anchor="start">ratelimit:{channel}</text>
+  <text x="1174.0" y="178.0" fill="#9f1239" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.8" font-weight="500" text-anchor="start">100 sends/s per channel</text>
+  <text x="1174.0" y="198.0" fill="#9f1239" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.8" font-weight="400" text-anchor="start">Burst 1 (even spacing)</text>
+  <text x="1174.0" y="218.0" fill="#9f1239" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.8" font-weight="600" text-anchor="start">Fail-closed if unreachable</text>
+  <path d="M 672.0 248.0 L 672.0 266.0 Q 672.0 278.0 660.0 278.0 L 124.0 278.0 Q 112.0 278.0 112.0 290.0 L 112.0 340.0" fill="none" stroke="#4f46e5" stroke-width="2.00" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-4f46e5)"/>
+  <rect x="225.8" y="266.4" width="328.4" height="23.2" rx="7.0" fill="#ffffff" stroke="#4f46e5" stroke-width="1.10"/>
+  <text x="390.0" y="281.7" fill="#312e81" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.6" font-weight="600" text-anchor="middle">LISTEN outbox / 1s poll · FOR UPDATE SKIP LOCKED</text>
+  <path d="M 226.0 342.0 L 226.0 324.0 Q 226.0 312.0 238.0 312.0 L 720.0 312.0 Q 732.0 312.0 732.0 300.0 L 732.0 250.0" fill="none" stroke="#d97706" stroke-width="1.90" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" marker-end="url(#arr-d97706)"/>
+  <rect x="327.5" y="300.4" width="309.0" height="23.2" rx="7.0" fill="#fffbeb" stroke="#d97706" stroke-width="1.10"/>
+  <text x="482.0" y="315.7" fill="#78350f" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.6" font-weight="600" text-anchor="middle">reap sending &gt; 60s → retry (+outbox) | failed</text>
+  <path d="M 838.0 342.0 L 838.0 250.0" fill="none" stroke="#0284c7" stroke-width="2.00" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-0284c7)"/>
+  <rect x="779.2" y="277.6" width="117.5" height="36.9" rx="7.0" fill="#ffffff" stroke="#0284c7" stroke-width="1.10"/>
+  <text x="838.0" y="292.7" fill="#0c4a6e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">queued → sending</text>
+  <text x="838.0" y="306.6" fill="#0c4a6e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">sent · failed</text>
+  <path d="M 988.0 342.0 L 988.0 250.0" fill="none" stroke="#d97706" stroke-width="2.00" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3" marker-end="url(#arr-d97706)"/>
+  <rect x="932.4" y="277.6" width="111.2" height="36.9" rx="7.0" fill="#fffbeb" stroke="#d97706" stroke-width="1.10"/>
+  <text x="988.0" y="292.7" fill="#78350f" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">retry_scheduled</text>
+  <text x="988.0" y="306.6" fill="#78350f" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">+ future outbox</text>
+  <path d="M 1072.0 340.0 L 1072.0 307.0 Q 1072.0 295.0 1084.0 295.0 L 1260.0 295.0 Q 1272.0 295.0 1272.0 283.0 L 1272.0 246.0" fill="none" stroke="#e11d48" stroke-width="2.00" stroke-linecap="round" stroke-linejoin="round" marker-start="url(#arr-e11d48)" marker-end="url(#arr-e11d48)"/>
+  <rect x="1114.6" y="283.4" width="138.9" height="23.2" rx="7.0" fill="#fff1f2" stroke="#e11d48" stroke-width="1.10"/>
+  <text x="1184.0" y="298.7" fill="#881337" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.6" font-weight="600" text-anchor="middle">GCRA slot (wait μs)</text>
+  <rect x="34.0" y="342.0" width="246.0" height="360.0" rx="14.0" fill="#edf7ff" stroke="#0284c7" stroke-width="1.80" filter="url(#card-shadow)"/>
+  <g transform="translate(50.0,358.0)" fill="none" stroke="#0284c7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2" width="13" height="5" rx="1.5"/><rect x="1.5" y="9" width="13" height="5" rx="1.5"/><circle cx="4.5" cy="4.5" r="0.7" fill="#0284c7"/><circle cx="4.5" cy="11.5" r="0.7" fill="#0284c7"/></g>
+  <text x="72.0" y="371.0" fill="#0c4a6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.0" font-weight="700" text-anchor="start">relay</text>
+  <rect x="185.9" y="356.0" width="80.0" height="20.0" rx="10.0" fill="#dbeafe"/>
+  <text x="226.0" y="369.7" fill="#0369a1" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">Go · :8081</text>
+  <rect x="48.0" y="390.0" width="218.0" height="146.0" rx="10.0" fill="#ffffff" stroke="#bae6fd" stroke-width="1.30"/>
+  <text x="60.0" y="412.0" fill="#0c4a6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" text-anchor="start">Outbox Relay</text>
+  <rect x="183.1" y="398.0" width="70.9" height="18.0" rx="9.0" fill="#dbeafe"/>
+  <text x="218.6" y="410.5" fill="#0369a1" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.0" font-weight="600" text-anchor="middle">batch 100</text>
+  <text x="60.0" y="437.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">• Claim due outbox rows</text>
+  <text x="60.0" y="459.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">• Transition → queued</text>
+  <text x="60.0" y="481.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">• Publish + broker confirms</text>
+  <text x="60.0" y="503.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">• Delete outbox in same tx</text>
+  <rect x="48.0" y="552.0" width="218.0" height="136.0" rx="10.0" fill="#ffffff" stroke="#d97706" stroke-width="1.20" stroke-dasharray="5 3"/>
+  <text x="60.0" y="574.0" fill="#78350f" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" text-anchor="start">Lease Reaper</text>
+  <rect x="183.1" y="560.0" width="70.9" height="18.0" rx="9.0" fill="#fef3c7"/>
+  <text x="218.6" y="572.5" fill="#b45309" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.0" font-weight="600" text-anchor="middle">every 15s</text>
+  <text x="60.0" y="598.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.2" font-weight="500" text-anchor="start">• Scans sending &gt; 60s lease</text>
+  <text x="60.0" y="618.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.2" font-weight="500" text-anchor="start">• Recovers crashed workers</text>
+  <text x="60.0" y="638.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.2" font-weight="500" text-anchor="start">• → retry (available_at=now)</text>
+  <text x="60.0" y="658.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.2" font-weight="500" text-anchor="start">• → or permanently_failed</text>
+  <path d="M 280.0 462.0 L 386.0 462.0" fill="none" stroke="#ea580c" stroke-width="2.10" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-ea580c)"/>
+  <rect x="291.0" y="443.4" width="78.0" height="37.1" rx="7.0" fill="#ffffff" stroke="#ea580c" stroke-width="1.10"/>
+  <text x="330.0" y="458.6" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">publish</text>
+  <text x="330.0" y="472.7" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">+ confirms</text>
+  <rect x="388.0" y="342.0" width="266.0" height="360.0" rx="14.0" fill="#fff4eb" stroke="#ea580c" stroke-width="1.80" filter="url(#card-shadow)"/>
+  <g transform="translate(404.0,358.0)" fill="none" stroke="#ea580c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="8 2 14.5 5.5 8 9 1.5 5.5 8 2"/><polyline points="1.5 9 8 12.5 14.5 9"/><polyline points="1.5 12.2 8 15.5 14.5 12.2"/></g>
+  <text x="426.0" y="371.0" fill="#7c2d12" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.0" font-weight="700" text-anchor="start">RabbitMQ 4</text>
+  <rect x="585.6" y="356.0" width="54.4" height="20.0" rx="10.0" fill="#ffedd5"/>
+  <text x="612.8" y="369.7" fill="#c2410c" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">Quorum</text>
+  <rect x="402.0" y="386.0" width="238.0" height="160.0" rx="10.0" fill="#ffffff" stroke="#fed7aa" stroke-width="1.30"/>
+  <text x="414.0" y="406.0" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="13.0" font-weight="700" text-anchor="start">notifications</text>
+  <rect x="575.4" y="392.0" width="52.6" height="18.0" rx="9.0" fill="#ffedd5"/>
+  <text x="601.7" y="404.5" fill="#c2410c" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.0" font-weight="600" text-anchor="middle">direct</text>
+  <text x="414.0" y="424.0" fill="#9a3412" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.1" font-weight="500" text-anchor="start">9 durable quorum work queues</text>
+  <text x="414.0" y="454.0" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.4" font-weight="700" text-anchor="start">sms</text>
+  <rect x="466.0" y="438.0" width="50.0" height="23.0" rx="6.0" fill="#fef2f2" stroke="#dc2626" stroke-width="1.00"/>
+  <text x="491.0" y="453.5" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">high</text>
+  <rect x="521.0" y="438.0" width="50.0" height="23.0" rx="6.0" fill="#fff4eb" stroke="#ea580c" stroke-width="1.00"/>
+  <text x="546.0" y="453.5" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">normal</text>
+  <rect x="576.0" y="438.0" width="50.0" height="23.0" rx="6.0" fill="#f8fafc" stroke="#64748b" stroke-width="1.00"/>
+  <text x="601.0" y="453.5" fill="#1e293b" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">low</text>
+  <text x="414.0" y="488.0" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.4" font-weight="700" text-anchor="start">email</text>
+  <rect x="466.0" y="472.0" width="50.0" height="23.0" rx="6.0" fill="#fef2f2" stroke="#dc2626" stroke-width="1.00"/>
+  <text x="491.0" y="487.5" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">high</text>
+  <rect x="521.0" y="472.0" width="50.0" height="23.0" rx="6.0" fill="#fff4eb" stroke="#ea580c" stroke-width="1.00"/>
+  <text x="546.0" y="487.5" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">normal</text>
+  <rect x="576.0" y="472.0" width="50.0" height="23.0" rx="6.0" fill="#f8fafc" stroke="#64748b" stroke-width="1.00"/>
+  <text x="601.0" y="487.5" fill="#1e293b" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">low</text>
+  <text x="414.0" y="522.0" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.4" font-weight="700" text-anchor="start">push</text>
+  <rect x="466.0" y="506.0" width="50.0" height="23.0" rx="6.0" fill="#fef2f2" stroke="#dc2626" stroke-width="1.00"/>
+  <text x="491.0" y="521.5" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">high</text>
+  <rect x="521.0" y="506.0" width="50.0" height="23.0" rx="6.0" fill="#fff4eb" stroke="#ea580c" stroke-width="1.00"/>
+  <text x="546.0" y="521.5" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">normal</text>
+  <rect x="576.0" y="506.0" width="50.0" height="23.0" rx="6.0" fill="#f8fafc" stroke="#64748b" stroke-width="1.00"/>
+  <text x="601.0" y="521.5" fill="#1e293b" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">low</text>
+  <path d="M 521.0 546.0 L 521.0 588.0" fill="none" stroke="#dc2626" stroke-width="1.60" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#arr-dc2626)"/>
+  <rect x="434.7" y="554.2" width="172.6" height="17.6" rx="7.0" fill="#ffffff" stroke="#dc2626" stroke-width="1.10"/>
+  <text x="521.0" y="566.3" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="9.4" font-weight="600" text-anchor="middle">invalid msg → reject (x-dlx)</text>
+  <rect x="402.0" y="590.0" width="238.0" height="100.0" rx="10.0" fill="#fef2f2" stroke="#dc2626" stroke-width="1.30"/>
+  <text x="414.0" y="611.0" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12.8" font-weight="700" text-anchor="start">notifications.dlx</text>
+  <rect x="593.7" y="597.0" width="34.3" height="18.0" rx="9.0" fill="#fee2e2"/>
+  <text x="610.9" y="609.5" fill="#b91c1c" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.0" font-weight="600" text-anchor="middle">DLX</text>
+  <text x="414.0" y="630.0" fill="#991b1b" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.1" font-weight="500" text-anchor="start">3 quorum dead-letter queues</text>
+  <rect x="414.0" y="645.0" width="66.0" height="28.0" rx="6.0" fill="#ffffff" stroke="#dc2626" stroke-width="1.10"/>
+  <text x="447.0" y="663.0" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" text-anchor="middle">sms.dlq</text>
+  <rect x="486.0" y="645.0" width="66.0" height="28.0" rx="6.0" fill="#ffffff" stroke="#dc2626" stroke-width="1.10"/>
+  <text x="519.0" y="663.0" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" text-anchor="middle">email.dlq</text>
+  <rect x="558.0" y="645.0" width="66.0" height="28.0" rx="6.0" fill="#ffffff" stroke="#dc2626" stroke-width="1.10"/>
+  <text x="591.0" y="663.0" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="700" text-anchor="middle">push.dlq</text>
+  <path d="M 654.0 466.0 L 764.0 466.0" fill="none" stroke="#ea580c" stroke-width="2.10" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-ea580c)"/>
+  <rect x="665.1" y="447.6" width="81.8" height="36.9" rx="7.0" fill="#ffffff" stroke="#ea580c" stroke-width="1.10"/>
+  <text x="706.0" y="462.7" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">consume</text>
+  <text x="706.0" y="476.6" fill="#7c2d12" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.4" font-weight="600" text-anchor="middle">prefetch 20</text>
+  <path d="M 766.0 645.0 L 656.0 645.0" fill="none" stroke="#dc2626" stroke-width="1.90" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3" marker-end="url(#arr-dc2626)"/>
+  <rect x="673.7" y="627.9" width="84.5" height="34.2" rx="7.0" fill="#fef2f2" stroke="#dc2626" stroke-width="1.10"/>
+  <text x="716.0" y="642.0" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="9.4" font-weight="600" text-anchor="middle">non-2xx / max</text>
+  <text x="716.0" y="654.6" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="9.4" font-weight="600" text-anchor="middle">→ publish DLQ</text>
+  <rect x="766.0" y="342.0" width="328.0" height="360.0" rx="14.0" fill="#edf7ff" stroke="#0284c7" stroke-width="1.80" filter="url(#card-shadow)"/>
+  <g transform="translate(782.0,358.0)" fill="none" stroke="#0284c7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2" width="13" height="5" rx="1.5"/><rect x="1.5" y="9" width="13" height="5" rx="1.5"/><circle cx="4.5" cy="4.5" r="0.7" fill="#0284c7"/><circle cx="4.5" cy="11.5" r="0.7" fill="#0284c7"/></g>
+  <text x="804.0" y="371.0" fill="#0c4a6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16.0" font-weight="700" text-anchor="start">worker</text>
+  <rect x="1000.0" y="356.0" width="80.0" height="20.0" rx="10.0" fill="#dbeafe"/>
+  <text x="1040.0" y="369.7" fill="#0369a1" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.5" font-weight="600" text-anchor="middle">Go · :8082</text>
+  <text x="782.0" y="391.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" text-anchor="start">Per-channel pipeline (sms · email · push)</text>
+  <rect x="782.0" y="406.0" width="296.0" height="46.0" rx="8.0" fill="#ffffff" stroke="#0284c7" stroke-width="1.20"/>
+  <circle cx="801" cy="429.0" r="10.5" fill="#dbeafe" stroke="#0284c7" stroke-width="1"/>
+  <text x="801.0" y="433.0" fill="#0c4a6e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.0" font-weight="700" text-anchor="middle">1</text>
+  <text x="820.0" y="425.0" fill="#0c4a6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.2" font-weight="700" text-anchor="start">Smooth WRR Picker</text>
+  <text x="820.0" y="442.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">6 : 3 : 1 priority share · no starvation</text>
+  <line x1="930" y1="452.0" x2="930" y2="461.0" stroke="#64748b" stroke-width="1.3"/>
+  <polygon points="926.5,459.0 933.5,459.0 930,463.0" fill="#64748b"/>
+  <rect x="782.0" y="463.0" width="296.0" height="46.0" rx="8.0" fill="#ffffff" stroke="#7c3aed" stroke-width="1.20"/>
+  <circle cx="801" cy="486.0" r="10.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="801.0" y="490.0" fill="#4c1d95" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.0" font-weight="700" text-anchor="middle">2</text>
+  <text x="820.0" y="482.0" fill="#4c1d95" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.2" font-weight="700" text-anchor="start">Circuit Breaker</text>
+  <text x="820.0" y="499.0" fill="#5b21b6" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">per-ch · &gt;50% of ≥20 (10s) → opens 30s</text>
+  <line x1="930" y1="509.0" x2="930" y2="518.0" stroke="#64748b" stroke-width="1.3"/>
+  <polygon points="926.5,516.0 933.5,516.0 930,520.0" fill="#64748b"/>
+  <rect x="782.0" y="520.0" width="296.0" height="46.0" rx="8.0" fill="#ffffff" stroke="#0284c7" stroke-width="1.20"/>
+  <circle cx="801" cy="543.0" r="10.5" fill="#dbeafe" stroke="#0284c7" stroke-width="1"/>
+  <text x="801.0" y="547.0" fill="#0c4a6e" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.0" font-weight="700" text-anchor="middle">3</text>
+  <text x="820.0" y="539.0" fill="#0c4a6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.2" font-weight="700" text-anchor="start">Sender Pool</text>
+  <text x="820.0" y="556.0" fill="#1e4e6e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">50 concurrent sends in flight / ch</text>
+  <line x1="930" y1="566.0" x2="930" y2="575.0" stroke="#64748b" stroke-width="1.3"/>
+  <polygon points="926.5,573.0 933.5,573.0 930,577.0" fill="#64748b"/>
+  <rect x="782.0" y="577.0" width="296.0" height="46.0" rx="8.0" fill="#ffffff" stroke="#e11d48" stroke-width="1.20"/>
+  <circle cx="801" cy="600.0" r="10.5" fill="#ffe4e6" stroke="#e11d48" stroke-width="1"/>
+  <text x="801.0" y="604.0" fill="#881337" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.0" font-weight="700" text-anchor="middle">4</text>
+  <text x="820.0" y="596.0" fill="#881337" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.2" font-weight="700" text-anchor="start">GCRA Rate Limiter</text>
+  <text x="820.0" y="613.0" fill="#9f1239" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">100/s via Redis Lua · fail-closed</text>
+  <line x1="930" y1="623.0" x2="930" y2="632.0" stroke="#64748b" stroke-width="1.3"/>
+  <polygon points="926.5,630.0 933.5,630.0 930,634.0" fill="#64748b"/>
+  <rect x="782.0" y="634.0" width="296.0" height="46.0" rx="8.0" fill="#ffffff" stroke="#7c3aed" stroke-width="1.20"/>
+  <circle cx="801" cy="657.0" r="10.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="801.0" y="661.0" fill="#4c1d95" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11.0" font-weight="700" text-anchor="middle">5</text>
+  <text x="820.0" y="653.0" fill="#4c1d95" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.2" font-weight="700" text-anchor="start">Deliverer (ADR 0015)</text>
+  <text x="820.0" y="670.0" fill="#5b21b6" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="400" text-anchor="start">queued→sending · AMQP ack · POST</text>
+  <path d="M 1094.0 657.0 L 1234.0 657.0" fill="none" stroke="#7c3aed" stroke-width="2.10" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arr-7c3aed)"/>
+  <rect x="1107.3" y="638.8" width="107.3" height="36.3" rx="7.0" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.10"/>
+  <text x="1161.0" y="653.7" fill="#4c1d95" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">POST</text>
+  <text x="1161.0" y="667.4" fill="#4c1d95" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.2" font-weight="600" text-anchor="middle">Idempotency-Key</text>
+  <rect x="1236.0" y="446.0" width="150.0" height="256.0" rx="14.0" fill="#fffbeb" stroke="#d97706" stroke-width="1.80" filter="url(#card-shadow)"/>
+  <g transform="translate(1250.0,462.0)" fill="none" stroke="#d97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/><path d="M8 1.5a10 10 0 0 1 0 13a10 10 0 0 1 0-13z"/></g>
+  <text x="1272.0" y="475.0" fill="#78350f" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15.0" font-weight="700" text-anchor="start">Provider</text>
+  <text x="1250.0" y="495.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" text-anchor="start">HTTP / Mock</text>
+  <line x1="1250" y1="508" x2="1372" y2="508" stroke="#fde68a" stroke-width="1"/>
+  <text x="1250.0" y="526.0" fill="#78350f" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.2" font-weight="700" text-anchor="start">Classification:</text>
+  <rect x="1248.0" y="536.0" width="126.0" height="38.0" rx="7.0" fill="#ecfdf5" stroke="#059669" stroke-width="1.10"/>
+  <text x="1256.0" y="552.0" fill="#064e3b" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.6" font-weight="700" text-anchor="start">2xx</text>
+  <text x="1256.0" y="567.0" fill="#065f46" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.6" font-weight="600" text-anchor="start">→ sent</text>
+  <rect x="1248.0" y="581.0" width="126.0" height="54.0" rx="7.0" fill="#fffbeb" stroke="#d97706" stroke-width="1.10"/>
+  <text x="1256.0" y="597.0" fill="#78350f" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.3" font-weight="700" text-anchor="start">5xx / 429 / 408</text>
+  <text x="1256.0" y="612.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.1" font-weight="500" text-anchor="start">timeout · conn err</text>
+  <text x="1256.0" y="627.0" fill="#92400e" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.4" font-weight="600" text-anchor="start">→ retry (backoff)</text>
+  <rect x="1248.0" y="642.0" width="126.0" height="46.0" rx="7.0" fill="#fef2f2" stroke="#dc2626" stroke-width="1.10"/>
+  <text x="1256.0" y="658.0" fill="#7f1d1d" font-family="'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="10.3" font-weight="700" text-anchor="start">other non-2xx</text>
+  <text x="1256.0" y="672.0" fill="#991b1b" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="9.9" font-weight="600" text-anchor="start">(3xx, 4xx) → fail+DLQ</text>
+  <rect x="34.0" y="730.0" width="1352.0" height="96.0" rx="12.0" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.40" stroke-dasharray="6 4"/>
+  <text x="50.0" y="751.0" fill="#475569" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.0" font-weight="700" text-anchor="start" letter-spacing="0.60">OBSERVABILITY PLANE   ·   emitted by api, relay &amp; worker</text>
+  <rect x="50.0" y="762.0" width="434.0" height="52.0" rx="8.0" fill="#ffffff" stroke="#ddd6fe" stroke-width="1.20"/>
+  <rect x="51" y="770" width="3.5" height="36" rx="2" fill="#7c3aed"/>
+  <text x="64.0" y="783.0" fill="#4c1d95" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.1" font-weight="700" text-anchor="start">Distributed Tracing · Jaeger</text>
+  <text x="64.0" y="801.0" fill="#5b21b6" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.0" font-weight="400" text-anchor="start">OTLP/HTTP · 1 trace / notification via W3C traceparent (reaper starts new)</text>
+  <rect x="498.0" y="762.0" width="484.0" height="52.0" rx="8.0" fill="#ffffff" stroke="#a7f3d0" stroke-width="1.20"/>
+  <rect x="499" y="770" width="3.5" height="36" rx="2" fill="#059669"/>
+  <text x="512.0" y="783.0" fill="#064e3b" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.1" font-weight="700" text-anchor="start">Metrics · Prometheus → Grafana</text>
+  <text x="512.0" y="801.0" fill="#065f46" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.0" font-weight="400" text-anchor="start">/metrics · queue_depth, outbox_backlog, ratelimit_wait_seconds, circuit_breaker_state</text>
+  <rect x="996.0" y="762.0" width="374.0" height="52.0" rx="8.0" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.20"/>
+  <rect x="997" y="770" width="3.5" height="36" rx="2" fill="#64748b"/>
+  <text x="1010.0" y="783.0" fill="#1e293b" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.1" font-weight="700" text-anchor="start">Logs &amp; Health · JSON stdout</text>
+  <text x="1010.0" y="801.0" fill="#475569" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.0" font-weight="400" text-anchor="start">correlation_id + trace_id · /health/live &amp; /ready (fail-closed)</text>
+</svg>
